@@ -18,5 +18,6 @@
       "flag": "UNVERIFIED_STATE"
     }
   ],
-  "telemetry_source": "wire_level_fuzzer_v0.1"
+  "telemetry_source": "wire_level_fuzzer_v0.1",
+  "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
 }
