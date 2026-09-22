@@ -4,7 +4,7 @@
 
 [![Release](https://img.shields.io/badge/release-v0.1.0-blue.svg)](https://github.com/sovereignnexus/aeib-receipt-fuzzer/releases/tag/v0.1.0)
 [![License](https://img.shields.io/badge/license-Apache%202.0-green.svg)](LICENSE)
-[![Egress](https://img.shields.io/badge/egress-0%20bytes%20(air--gapped)-success.svg)](#privacy--zero-egress-invariant)
+[![Egress](https://img.shields.io/badge/egress-no%20external%20API%20calls-success.svg)](#privacy--zero-egress-invariant)
 [![Compliance](https://img.shields.io/badge/compliance-DORA%20Art.%2017%20%7C%20ISO%2042001-orange.svg)](#regulatory-compliance-mapping)
 
 ---
@@ -77,7 +77,7 @@ Every local run outputs:
 ## 💼 Commercial Diagnostic Engagement
 
 Need to audit your staging logs before DORA enforcement?
-* **48-Hour Staging Diagnostic Audit (€1,500 / ~38,000 CZK):** Ingestion of 250+ staging execution traces, calculation of your Toxic Receipt Index (TRI %), and delivery of the full DORA Article 17 gap report.
+* **Staging Diagnostic Audit (€1,500 / ~38,000 CZK):** Ingestion of 50–100 staging execution traces, calculation of your Toxic Receipt Index (TRI %), and delivery of the full DORA Article 17 gap report within 5 business days.
 
 See [`SPECS.md`](SPECS.md) or [`docs/sow-diagnostic-audit.pdf`](docs/sow-diagnostic-audit.pdf) for the full Statement of Work.
 
