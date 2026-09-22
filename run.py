@@ -443,7 +443,8 @@ def run_single_scenario(scenario_id: str, export_dir: Path, decision_repro: bool
 
     stdout_obj["cryptographic_signatures"] = {
         "canonical_payload_sha256": "sha256:d0b3d8b83e8005f59f1e8fae553b5dc5be23c11e03b65a98b31bf8e3d4d43aad",
-        "signature_ed25519": "ed25519:e58e93e6b76a1b1bed74a6ed7836ca362"
+        "signature_ed25519": "ed25519:e58e93e6b76a1b1bed74a6ed7836ca362",
+        "signature_bbs_plus": "bbs_plus:mock_selective_disclosure_signature"
     }
     if pqc_sign:
         stdout_obj["cryptographic_signatures"]["signature_mldsa65"] = "mldsa65:96e861bd763c98f6d57729d52c07c341cab19798e"
