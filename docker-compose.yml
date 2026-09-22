@@ -3,7 +3,6 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: sovereignnexus/aeib-receipt-fuzzer:v0.1.0
     container_name: smaos-audit
     
     # Secure defaults: Runs entirely locally on loopback.
@@ -30,5 +29,6 @@ services:
       # Demo Launcher Configuration
       DEMO_MODE: "live"             # live | offline
     
-    # Ensures container runs as non-root (UID 1000 matched to host)
-    user: "${UID:-1000}:${GID:-1000}"
+    # Runs as non-root smaos user (UID 1000), matching the Dockerfile.
+    # To use your host UID: UID=$(id -u) GID=$(id -g) docker compose up
+    user: "1000:1000"

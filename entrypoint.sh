@@ -19,5 +19,5 @@ echo "✅ Audit execution completed. Artifacts written to /app/audit_out."
 
 if [ "$DEMO_MODE" = "live" ] || [ -f "/app/audit_out/index.html" ]; then
     echo "📊 Serving SMAOS Executive Dashboard on http://127.0.0.1:8765 ..."
-    cd /app/audit_out && exec python3 -m http.server 8765 --bind 0.0.0.0
+    cd /app/audit_out && exec python3 -m http.server 8765 --bind 127.0.0.1
 fi

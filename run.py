@@ -23,36 +23,38 @@ import urllib.request
 MOCK_PORT = 18081
 PROXY_PORT = 18080
 
+# Explicit sentinel: never use 0 — it is falsy and ambiguous.
+WIRE_NO_RESPONSE = -1  # represents TCP RST, connection abort, no HTTP response received
+
 
 class TraceScrubber:
     """Zero-egress local PII/PCI-DSS sanitizer."""
     PATTERNS = {
-        "IBAN": re.compile(r"[A-Z]{2}\d{2}[A-Z0-9]{11,30}"),
-        "PAN": re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b"),
-        "JWT": re.compile(r"Bearer\s+[A-Za-z0-9-_=]+\.[A-Za-z0-9-_=]+\.?[A-Za-z0-9-_.+/=]*"),
-        "EMAIL": re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b")
+        "IBAN": re.compile(r"\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b"),
+        "PAN":  re.compile(r"\b(?:\d{4}[-\s]?){3}\d{4}\b"),
+        "JWT":  re.compile(r"Bearer\s+[A-Za-z0-9\-_=]+\.[A-Za-z0-9\-_=]+\.?[A-Za-z0-9\-_.+/=]*"),
+        "EMAIL": re.compile(r"\b[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}\b"),
     }
 
     @classmethod
     def sanitize(cls, text: str) -> str:
         for label, pattern in cls.PATTERNS.items():
-            if label == "JWT":
-                text = pattern.sub("Bearer [REDACTED_JWT]", text)
-            else:
-                text = pattern.sub(f"[REDACTED_{label}]", text)
+            replacement = "Bearer [REDACTED_JWT]" if label == "JWT" else f"[REDACTED_{label}]"
+            text = pattern.sub(replacement, text)
         return text
 
 
 class MockDownstreamHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(content_len) if content_len > 0 else b""
+        if content_len > 0:
+            self.rfile.read(content_len)
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
         self.end_headers()
         self.wfile.write(b'{"status": "COMMITTED", "code": 200}')
 
-    def log_message(self, format, *args):
+    def log_message(self, fmt, *args):  # noqa: N802
         return
 
 
@@ -62,7 +64,9 @@ class FaultProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_POST(self):
         content_len = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(content_len) if content_len > 0 else b""
-        body_scrubbed = TraceScrubber.sanitize(body.decode("utf-8", errors="ignore")).encode("utf-8")
+        body_scrubbed = TraceScrubber.sanitize(
+            body.decode("utf-8", errors="ignore")
+        ).encode("utf-8")
 
         if FaultProxyHandler.mode == "INJECT_504":
             time.sleep(0.12)
@@ -73,8 +77,11 @@ class FaultProxyHandler(http.server.BaseHTTPRequestHandler):
             return
 
         if FaultProxyHandler.mode == "INJECT_RST":
+            # Force TCP RST by setting SO_LINGER with l_onoff=1, l_linger=0
             try:
-                self.request.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, b"\x01\x00\x00\x00\x00\x00\x00\x00")
+                import struct
+                linger = struct.pack("ii", 1, 0)
+                self.request.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, linger)
             except Exception:
                 pass
             self.close_connection = True
@@ -83,53 +90,117 @@ class FaultProxyHandler(http.server.BaseHTTPRequestHandler):
         req = urllib.request.Request(
             f"http://127.0.0.1:{MOCK_PORT}{self.path}",
             data=body_scrubbed,
-            headers={k: v for k, v in self.headers.items() if k.lower() != "content-length"}
+            headers={k: v for k, v in self.headers.items()
+                     if k.lower() not in ("content-length", "host")},
         )
         try:
             with urllib.request.urlopen(req) as resp:
                 self.send_response(resp.status)
                 for k, v in resp.getheaders():
-                    self.send_header(k, v)
+                    if k.lower() not in ("transfer-encoding",):
+                        self.send_header(k, v)
                 self.end_headers()
                 self.wfile.write(resp.read())
-        except urllib.error.HTTPError as e:
-            self.send_response(e.code)
+        except urllib.error.HTTPError as exc:
+            self.send_response(exc.code)
             self.end_headers()
-            self.wfile.write(e.read())
+            self.wfile.write(exc.read())
         except Exception:
             self.send_response(502)
             self.end_headers()
             self.wfile.write(b'{"error": "Bad Gateway"}')
 
-    def log_message(self, format, *args):
+    def log_message(self, fmt, *args):  # noqa: N802
         return
 
 
+def _wait_for_port(host: str, port: int, timeout: float = 2.0) -> bool:
+    """Poll until the port accepts connections or timeout expires."""
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            with socket.create_connection((host, port), timeout=0.05):
+                return True
+        except OSError:
+            time.sleep(0.02)
+    return False
+
+
 def run_servers():
+    """Start mock downstream and fault proxy servers, with port-conflict detection."""
+    for port, name in [(MOCK_PORT, "Mock Downstream"), (PROXY_PORT, "Fault Proxy")]:
+        try:
+            probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            probe.bind(("127.0.0.1", port))
+            probe.close()
+        except OSError:
+            print(
+                f"[!] ERROR: Port {port} ({name}) is already in use.\n"
+                f"    Kill the conflicting process (lsof -ti tcp:{port} | xargs kill) "
+                f"or change the port in run.py (MOCK_PORT / PROXY_PORT).",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+
     socketserver.TCPServer.allow_reuse_address = True
     mock = socketserver.TCPServer(("127.0.0.1", MOCK_PORT), MockDownstreamHandler)
     proxy = socketserver.TCPServer(("127.0.0.1", PROXY_PORT), FaultProxyHandler)
-    t1 = threading.Thread(target=mock.serve_forever, daemon=True)
-    t2 = threading.Thread(target=proxy.serve_forever, daemon=True)
-    t1.start()
-    t2.start()
+
+    threading.Thread(target=mock.serve_forever, daemon=True).start()
+    threading.Thread(target=proxy.serve_forever, daemon=True).start()
+
+    # Reliable startup: poll instead of blind sleep
+    if not _wait_for_port("127.0.0.1", MOCK_PORT):
+        print("[!] Mock server did not start within 2s.", file=sys.stderr)
+        sys.exit(1)
+    if not _wait_for_port("127.0.0.1", PROXY_PORT):
+        print("[!] Proxy server did not start within 2s.", file=sys.stderr)
+        sys.exit(1)
+
     return mock, proxy
 
 
 def evaluate_disposition(wire_status, sdk_claimed_status):
-    if wire_status in [504, 0] and sdk_claimed_status == "CONFIRMED":
+    """
+    Authoritative precedence cascade.
+
+    wire_status values:
+        int 200               — HTTP 200 OK received
+        int 504               — HTTP 504 Gateway Timeout received
+        int 403               — HTTP 403 Forbidden received
+        WIRE_NO_RESPONSE (-1) — connection aborted before HTTP response (TCP RST, etc.)
+        str "INVALID"         — schema / hash tamper detected (non-HTTP path)
+    """
+    # --- Timeout or connection abort with false CONFIRMED claim ---
+    if wire_status in (504, WIRE_NO_RESPONSE) and sdk_claimed_status == "CONFIRMED":
         return "UNKNOWN", "VERIFIED_TOXIC_RECEIPT"
-    if wire_status == 0 and sdk_claimed_status in ["FAILED", "RETRY_DISPATCH"]:
+
+    # --- Connection abort where agent plans unsafe retry ---
+    if wire_status == WIRE_NO_RESPONSE and sdk_claimed_status in ("FAILED", "RETRY_DISPATCH"):
         return "CONFLICT", "UNVERIFIED_STATE"
+
+    # --- Schema / tool-call hash tamper ---
     if wire_status == "INVALID" or sdk_claimed_status == "INVALID_INPUT":
         return "INVALID_INPUT", "SCHEMA_TAMPER"
+
+    # --- Clean settlement confirmation ---
     if wire_status == 200 and sdk_claimed_status == "CONFIRMED":
         return "CONFIRMED", "VERIFIED_VALID"
+
+    # --- Explicit policy refusal (agent correctly reports REFUSED) ---
+    if wire_status == 403 and sdk_claimed_status == "REFUSED":
+        return "REFUSED", "POLICY_GATE_REJECT"
+
+    # --- Any other state: insufficient evidence to assert outcome ---
     return "UNKNOWN", "UNCERTAIN"
 
 
-JAVA_REMEDIATION_FILTER = """package com.sovereignnexus.smaos.guard;
+# ─── Shared Java remediation filter ──────────────────────────────────────────
+JAVA_REMEDIATION_FILTER = """\
+package com.sovereignnexus.smaos.guard;
 
+import java.io.IOException;
 import org.springframework.web.reactive.function.client.ClientRequest;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.ExchangeFilterFunction;
@@ -140,234 +211,305 @@ import reactor.core.publisher.Mono;
  * Enterprise Spring Boot / WebClient Remediation Filter (Moat 1 & DORA Art. 17)
  * Hard boundary invariant: Evidence Absent => UNKNOWN
  * Prevents Spring AI / LangChain4j harnesses from returning ungrounded confirmation.
+ *
+ * Catches both SocketTimeoutException (HTTP 504) and IOException (TCP RST /
+ * ConnectException) to cover all transport-layer fault modes.
  */
 public class ProofOrStopFilter implements ExchangeFilterFunction {
+
+    /**
+     * Thrown when the wire provides no confirmation but the agent attempted to
+     * claim a settled state. Forces callers to treat the transaction as UNKNOWN.
+     */
+    public static class AgentDiscrepancyException extends RuntimeException {
+        public AgentDiscrepancyException(String message) {
+            super(message);
+        }
+    }
 
     @Override
     public Mono<ClientResponse> filter(ClientRequest request, ExchangeFunction next) {
         return next.exchange(request)
-            .onErrorResume(java.net.SocketTimeoutException.class, ex -> {
-                // Hard boundary invariant: Evidence Absent => UNKNOWN
-                return Mono.error(new AgentDiscrepancyException(
-                    "DORA Art. 17 Violation: Wire dropped with no settlement receipt. State forced to UNKNOWN."
-                ));
-            });
+            .onErrorResume(java.net.SocketTimeoutException.class, ex ->
+                Mono.error(new AgentDiscrepancyException(
+                    "DORA Art. 17 Violation: HTTP 504 timeout — wire dropped with no settlement receipt. "
+                    + "State forced to UNKNOWN."
+                ))
+            )
+            .onErrorResume(IOException.class, ex ->
+                Mono.error(new AgentDiscrepancyException(
+                    "DORA Art. 17 Violation: Transport-layer abort (TCP RST / ConnectException) — "
+                    + "no settlement receipt. State forced to UNKNOWN."
+                ))
+            );
     }
 }
 """
 
+# ─── Default scenario definitions ────────────────────────────────────────────
 DEFAULT_SCENARIOS = {
     "504_timeout": {
-        "scenario_id": "504_timeout",
-        "scenario": "504_timeout",
-        "dispatched_by": "Agent-LangChain-Treasury",
-        "payload_summary": "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault": "HTTP_504_TIMEOUT",
-        "wire_event": "HTTP 504 Gateway Timeout, no confirmation",
+        "scenario_id":      "504_timeout",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "HTTP_504_TIMEOUT",
+        "wire_event":       "HTTP 504 Gateway Timeout, no confirmation",
         "sdk_claimed_state": "CONFIRMED",
-        "claimed_by_agent": "CONFIRMED",
-        "evaluated_disposition": "UNKNOWN",
-        "final_disposition": "UNKNOWN",
-        "discrepancy_detected": True,
-        "reason": "Dispatch observed, confirmation absent. Unknown effect.",
-        "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering": False,
-        "dora_article_17_support": "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review",
-        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
+        "wire_status_code": 504,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "confirmed": {
-        "scenario_id": "confirmed",
-        "scenario": "confirmed",
-        "dispatched_by": "Agent-LangChain-Treasury",
-        "payload_summary": "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault": "NONE",
-        "wire_event": "HTTP 200 from settlement endpoint",
+        "scenario_id":      "confirmed",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "NONE",
+        "wire_event":       "HTTP 200 from settlement endpoint",
         "sdk_claimed_state": "CONFIRMED",
-        "claimed_by_agent": "CONFIRMED",
-        "evaluated_disposition": "CONFIRMED",
-        "final_disposition": "CONFIRMED",
-        "discrepancy_detected": False,
-        "reason": "Qualifying confirmation received before deadline.",
-        "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering": False,
-        "dora_article_17_support": "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review",
-        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
+        "wire_status_code": 200,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "refused": {
-        "scenario_id": "refused",
-        "scenario": "refused",
-        "dispatched_by": "Agent-LangChain-Treasury",
-        "payload_summary": "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault": "HTTP_403_FORBIDDEN",
-        "wire_event": "HTTP 403 from policy gateway",
+        "scenario_id":      "refused",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "HTTP_403_FORBIDDEN",
+        "wire_event":       "HTTP 403 from policy gateway",
         "sdk_claimed_state": "REFUSED",
-        "claimed_by_agent": "REFUSED",
-        "evaluated_disposition": "REFUSED",
-        "final_disposition": "REFUSED",
-        "discrepancy_detected": False,
-        "reason": "Explicit refusal recorded by downstream policy gate.",
-        "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering": False,
-        "dora_article_17_support": "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review",
-        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
+        "wire_status_code": 403,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "tcp_reset": {
-        "scenario_id": "tcp_reset",
-        "scenario": "tcp_reset",
-        "dispatched_by": "Agent-LangChain-Treasury",
-        "payload_summary": "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault": "TCP_RST",
-        "wire_event": "TCP RST after partial write, no confirmation",
+        "scenario_id":      "tcp_reset",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "TCP_RST",
+        "wire_event":       "TCP RST after partial write, no confirmation",
         "sdk_claimed_state": "UNKNOWN",
-        "claimed_by_agent": "UNKNOWN",
-        "evaluated_disposition": "UNKNOWN",
-        "final_disposition": "UNKNOWN",
-        "discrepancy_detected": False,
-        "reason": "Connection reset mid-flight. Confirmation absent. Unknown effect.",
-        "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering": False,
-        "dora_article_17_support": "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review",
-        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
-    }
+        "wire_status_code": WIRE_NO_RESPONSE,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
+}
+
+# ─── Mermaid generation ───────────────────────────────────────────────────────
+
+_WIRE_LINES = {
+    "504_timeout": "    Gateway--xAgent: HTTP 504 Gateway Timeout / Drop\n    Note over Agent: SDK swallows exception",
+    "confirmed":   "    Gateway->>Agent: HTTP 200 OK (COMMITTED)",
+    "refused":     "    Gateway--xAgent: HTTP 403 Forbidden (POLICY_GATE_REJECT)",
+    "tcp_reset":   "    Gateway--xAgent: TCP RST mid-flight / Drop",
 }
 
 
 def generate_scenario_mermaid(scenario_id: str, record: dict) -> str:
     payload = record.get("payload_summary", "EUR 50,000 to [REDACTED_IBAN]")
-    if scenario_id == "504_timeout":
-        wire_line = "    Gateway--xAgent: HTTP 504 Gateway Timeout / Drop\n    Note over Agent: SDK swallows exception"
-        agent_line = f"    Agent->>Agent: logs {json.dumps({'status': record.get('sdk_claimed_state', 'CONFIRMED')})}"
-        observer_line = f"    Observer->>Observer: compares wire state vs. claimed state\n    Observer->>Observer: emits {record.get('evaluated_disposition', 'UNKNOWN')} + evidence bundle"
-    elif scenario_id == "confirmed":
-        wire_line = "    Gateway->>Agent: HTTP 200 OK (COMMITTED)"
-        agent_line = f"    Agent->>Agent: logs {json.dumps({'status': record.get('sdk_claimed_state', 'CONFIRMED')})}"
-        observer_line = f"    Observer->>Observer: compares wire state vs. claimed state\n    Observer->>Observer: emits {record.get('evaluated_disposition', 'CONFIRMED')} + evidence bundle"
-    elif scenario_id == "refused":
-        wire_line = "    Gateway--xAgent: HTTP 403 Forbidden (POLICY_GATE_REJECT)"
-        agent_line = f"    Agent->>Agent: logs {json.dumps({'status': record.get('sdk_claimed_state', 'REFUSED')})}"
-        observer_line = f"    Observer->>Observer: compares wire state vs. claimed state\n    Observer->>Observer: emits {record.get('evaluated_disposition', 'REFUSED')} + evidence bundle"
-    else:  # tcp_reset
-        wire_line = "    Gateway--xAgent: TCP RST mid-flight / Drop"
-        agent_line = f"    Agent->>Agent: logs {json.dumps({'status': record.get('sdk_claimed_state', 'UNKNOWN')})}"
-        observer_line = f"    Observer->>Observer: compares wire state vs. claimed state\n    Observer->>Observer: emits {record.get('evaluated_disposition', 'UNKNOWN')} + evidence bundle"
-
-    return f"""sequenceDiagram
-    autonumber
-    actor Agent as Autonomous Agent
-    participant Observer as SMAOS Local Observer (passive)
-    participant Gateway as Core Banking Gateway
-
-    Observer->>Agent: observes outbound
-    Agent->>Gateway: POST /v1/settle ({payload})
-{wire_line}
-{agent_line}
-{observer_line}
-"""
+    sdk_state = record.get("sdk_claimed_state", "UNKNOWN")
+    disposition = record.get("evaluated_disposition", "UNKNOWN")
+    wire_line = _WIRE_LINES.get(
+        scenario_id,
+        "    Gateway--xAgent: Transport fault / Drop",
+    )
+    return (
+        "sequenceDiagram\n"
+        "    autonumber\n"
+        "    actor Agent as Autonomous Agent\n"
+        "    participant Observer as SMAOS Local Observer (passive)\n"
+        "    participant Gateway as Core Banking Gateway\n"
+        "\n"
+        "    Observer->>Agent: observes outbound\n"
+        f"    Agent->>Gateway: POST /v1/settle ({payload})\n"
+        f"{wire_line}\n"
+        f"    Agent->>Agent: logs {{\"status\": \"{sdk_state}\"}}\n"
+        "    Observer->>Observer: compares wire state vs. claimed state\n"
+        f"    Observer->>Observer: emits {disposition} + evidence bundle\n"
+    )
 
 
-def run_single_scenario(scenario_id: str, export_dir: Path):
+# ─── Single-scenario runner ───────────────────────────────────────────────────
+
+def run_single_scenario(scenario_id: str, export_dir: Path) -> None:
+    """
+    Load scenario metadata from fixture (if present), derive disposition via
+    evaluate_disposition(), print JSON to stdout, write all 4 artifact files.
+    The disposition is ALWAYS computed — never trusted from fixture data.
+    """
     export_dir.mkdir(parents=True, exist_ok=True)
-    
+
+    # 1. Start from the canonical defaults
+    meta = dict(DEFAULT_SCENARIOS.get(scenario_id, {}))
+    if not meta:
+        print(
+            f"[!] Unknown scenario '{scenario_id}'. "
+            f"Valid choices: {list(DEFAULT_SCENARIOS)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    # 2. Overlay fixture metadata (never override computed disposition fields)
     root_dir = Path(__file__).resolve().parent
     fixture_path = root_dir / "fixtures" / f"{scenario_id}.json"
-    
-    record = dict(DEFAULT_SCENARIOS.get(scenario_id, {}))
+    COMPUTED_FIELDS = {"evaluated_disposition", "final_disposition", "discrepancy_detected", "reason"}
     if fixture_path.exists():
         try:
             f_data = json.loads(fixture_path.read_text())
-            record.update(f_data)
-        except Exception:
-            pass
+            for k, v in f_data.items():
+                if k not in COMPUTED_FIELDS:
+                    meta[k] = v
+        except (json.JSONDecodeError, OSError):
+            pass  # malformed fixture — use defaults silently
 
+    # 3. Scrub payload_summary if fixture gave us a raw account number
+    if "destination_account" in meta:
+        raw_account = str(meta["destination_account"])
+        scrubbed = TraceScrubber.sanitize(raw_account)
+        meta["payload_summary"] = f"EUR {meta.get('amount', 50000):,.0f} to {scrubbed}"
+
+    # 4. DERIVE disposition — always via evaluate_disposition(), never from fixture
+    wire_status_code = meta.get("wire_status_code",
+                                DEFAULT_SCENARIOS.get(scenario_id, {}).get("wire_status_code", WIRE_NO_RESPONSE))
+    sdk_claimed = meta.get("sdk_claimed_state", "UNKNOWN")
+    evaluated_disposition, flag = evaluate_disposition(wire_status_code, sdk_claimed)
+    # Discrepancy = agent overclaimed a settled state that the wire cannot support
+    # UNCERTAIN means insufficient evidence (tcp_reset: agent said UNKNOWN = no overclaim)
+    # POLICY_GATE_REJECT means agent correctly reported REFUSED = no overclaim
+    # VERIFIED_VALID means clean confirmation = no overclaim
+    discrepancy = flag in ("VERIFIED_TOXIC_RECEIPT", "UNVERIFIED_STATE", "SCHEMA_TAMPER")
+    reason_map = {
+        "VERIFIED_TOXIC_RECEIPT": "Dispatch observed, confirmation absent. Unknown effect.",
+        "UNVERIFIED_STATE":       "Connection aborted. Remote mutation state uncertain. Unsafe to retry.",
+        "SCHEMA_TAMPER":          "Tool schema hash mismatch detected. Input rejected.",
+        "VERIFIED_VALID":         "Qualifying confirmation received before deadline.",
+        "POLICY_GATE_REJECT":     "Explicit refusal recorded by downstream policy gate.",
+        "UNCERTAIN":              "Insufficient evidence to determine outcome.",
+    }
+    reason = reason_map.get(flag, "State undetermined.")
+
+    # 5. Build stdout object (strict schema — no extra keys)
     stdout_obj = {
-        "scenario_id": record.get("scenario_id", scenario_id),
-        "dispatched_by": record.get("dispatched_by", "Agent-LangChain-Treasury"),
-        "payload_summary": record.get("payload_summary", "EUR 50,000 to [REDACTED_IBAN]"),
-        "transport_fault": record.get("transport_fault", "NONE"),
-        "wire_event": record.get("wire_event", ""),
-        "sdk_claimed_state": record.get("sdk_claimed_state", record.get("claimed_by_agent", "CONFIRMED")),
-        "evaluated_disposition": record.get("evaluated_disposition", record.get("final_disposition", "UNKNOWN")),
-        "discrepancy_detected": record.get("discrepancy_detected", False),
-        "reason": record.get("reason", ""),
-        "audit_stream": record.get("audit_stream", "INDEPENDENT_EVIDENCE_BUNDLE"),
-        "log_tampering": record.get("log_tampering", False),
-        "dora_article_17_support": record.get("dora_article_17_support", "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review"),
-        "pci_dss_sanitization": record.get("pci_dss_sanitization", "ACTIVE_ZERO_EGRESS")
+        "scenario_id":           meta["scenario_id"],
+        "dispatched_by":         meta.get("dispatched_by", "Agent-LangChain-Treasury"),
+        "payload_summary":       meta.get("payload_summary", "EUR 50,000 to [REDACTED_IBAN]"),
+        "transport_fault":       meta.get("transport_fault", "NONE"),
+        "wire_event":            meta.get("wire_event", ""),
+        "sdk_claimed_state":     sdk_claimed,
+        "evaluated_disposition": evaluated_disposition,
+        "discrepancy_detected":  discrepancy,
+        "reason":                reason,
+        "audit_stream":          meta.get("audit_stream", "INDEPENDENT_EVIDENCE_BUNDLE"),
+        "log_tampering":         meta.get("log_tampering", False),
+        "dora_article_17_support": meta.get("dora_article_17_support",
+                                            "Supports DORA Article 17 incident classification by producing a "
+                                            "machine-readable timeline and wire-evidence bundle for risk team review"),
+        "pci_dss_sanitization":  meta.get("pci_dss_sanitization", "ACTIVE_ZERO_EGRESS"),
     }
 
-    # Print strictly formatted JSON to stdout with 2-space indentation and zero debug noise
+    # Print strictly formatted JSON to stdout — zero debug noise
     print(json.dumps(stdout_obj, indent=2))
 
-    # Write export files:
-    # 1. disposition_report.json
-    disp_report = dict(stdout_obj)
-    disp_report["scenario"] = stdout_obj["scenario_id"]
-    disp_report["claimed_by_agent"] = stdout_obj["sdk_claimed_state"]
-    disp_report["final_disposition"] = stdout_obj["evaluated_disposition"]
-    (export_dir / "disposition_report.json").write_text(json.dumps(disp_report, indent=2) + "\n")
+    # 6. Write artifact files
+    _write_artifacts(scenario_id, stdout_obj, export_dir)
 
-    # 2. audit_trace.mermaid
-    mermaid_content = generate_scenario_mermaid(scenario_id, stdout_obj)
-    (export_dir / "audit_trace.mermaid").write_text(mermaid_content)
 
-    # 3. dora_art17_gap_report.json
+def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
+    # disposition_report.json
+    disp_report = dict(record)
+    disp_report["scenario"] = record["scenario_id"]
+    disp_report["claimed_by_agent"] = record["sdk_claimed_state"]
+    disp_report["final_disposition"] = record["evaluated_disposition"]
+    (export_dir / "disposition_report.json").write_text(
+        json.dumps(disp_report, indent=2) + "\n"
+    )
+
+    # audit_trace.mermaid
+    (export_dir / "audit_trace.mermaid").write_text(
+        generate_scenario_mermaid(scenario_id, record)
+    )
+
+    # dora_art17_gap_report.json
     dora_report = {
-        "scenario_id": stdout_obj["scenario_id"],
-        "dora_rts_classification": "4h_major_incident" if stdout_obj["discrepancy_detected"] else "nominal_compliant",
-        "discrepancy_detected": stdout_obj["discrepancy_detected"],
-        "telemetry_source": "aeib_wire_observer_v0.1.0",
-        "pci_dss_sanitization": stdout_obj["pci_dss_sanitization"],
-        "sample_payload_scrubbed": stdout_obj["payload_summary"],
-        "wire_event": stdout_obj["wire_event"],
-        "evaluated_disposition": stdout_obj["evaluated_disposition"],
-        "audit_trail_immutable": True
+        "scenario_id":           record["scenario_id"],
+        "dora_rts_classification": (
+            "4h_major_incident" if record["discrepancy_detected"] else "nominal_compliant"
+        ),
+        "discrepancy_detected":  record["discrepancy_detected"],
+        "telemetry_source":      "aeib_wire_observer_v0.1.0",
+        "pci_dss_sanitization":  record["pci_dss_sanitization"],
+        "sample_payload_scrubbed": record["payload_summary"],
+        "wire_event":            record["wire_event"],
+        "evaluated_disposition": record["evaluated_disposition"],
+        "audit_trail_immutable": True,
     }
-    (export_dir / "dora_art17_gap_report.json").write_text(json.dumps(dora_report, indent=2) + "\n")
+    (export_dir / "dora_art17_gap_report.json").write_text(
+        json.dumps(dora_report, indent=2) + "\n"
+    )
 
-    # 4. ProofOrStopFilter.java
+    # ProofOrStopFilter.java
     (export_dir / "ProofOrStopFilter.java").write_text(JAVA_REMEDIATION_FILTER)
 
 
-def emit_artifacts(output_dir: Path, results: list):
+# ─── Multi-scenario interactive mode ─────────────────────────────────────────
+
+def emit_artifacts(output_dir: Path, results: list) -> list:
     output_dir.mkdir(parents=True, exist_ok=True)
-    toxic = [r for r in results if r.get("flag") in ["VERIFIED_TOXIC_RECEIPT", "UNVERIFIED_STATE"]]
+    toxic = [r for r in results if r.get("flag") in ("VERIFIED_TOXIC_RECEIPT", "UNVERIFIED_STATE")]
     total = len(results)
+    # Compute TRI from actual results — never hardcode
     tri_score = (len(toxic) / max(total, 1)) * 100
 
-    # 1. dora_art17_gap_report.json
     (output_dir / "dora_art17_gap_report.json").write_text(
         json.dumps(
             {
-                "dora_rts_classification": "4h_major_incident",
+                "dora_rts_classification": "4h_major_incident" if toxic else "nominal_compliant",
                 "incidents": toxic,
                 "telemetry_source": "wire_level_fuzzer_v0.1",
                 "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
-                "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]"
+                "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]",
             },
-            indent=2
+            indent=2,
         )
     )
 
-    # 2. audit_trace.mermaid
     mermaid = [
         "sequenceDiagram",
         "    autonumber",
         "    actor Agent as Autonomous Agent",
         "    participant Wire as Fault Proxy / Gateway",
         "    participant Ledger as Downstream Bank",
-        "    participant Audit as smaos-audit Engine"
+        "    participant Audit as smaos-audit Engine",
     ]
     for r in results:
         mermaid.extend([
             f"    Note over Agent,Ledger: Scenario: {r['id']}",
             f"    Agent->>Wire: POST /execute ({r['payload']})",
-            f"    Wire--xAgent: HTTP {r['wire_status']} / Drop",
+            f"    Wire--xAgent: {r['wire_status']} / Drop",
             f"    Agent->>Agent: Claims status: '{r['sdk_claim']}'",
-            f"    Audit->>Agent: Precedence Cascade Enforces: {r['disposition']}"
+            f"    Audit->>Agent: Precedence Cascade Enforces: {r['disposition']}",
         ])
     (output_dir / "audit_trace.mermaid").write_text("\n".join(mermaid) + "\n")
 
-    # 3. TRI_Scorecard.md
     (output_dir / "TRI_Scorecard.md").write_text(
         f"# Toxic Receipt Index (TRI) Scorecard\n\n"
         f"**Score: {tri_score:.2f}%**\n"
@@ -377,7 +519,6 @@ def emit_artifacts(output_dir: Path, results: list):
         f"- Local PCI-DSS / GDPR Scrubbing: ACTIVE (0 PII leaks)\n"
     )
 
-    # 4. fix.patch
     (output_dir / "fix.patch").write_text(
         "--- a/agent/harness.py\n"
         "+++ b/agent/harness.py\n"
@@ -388,10 +529,8 @@ def emit_artifacts(output_dir: Path, results: list):
         " def settle_transaction(payload):\n"
     )
 
-    # 5. ProofOrStopFilter.java
     (output_dir / "ProofOrStopFilter.java").write_text(JAVA_REMEDIATION_FILTER)
 
-    # 6. RT.01.03_vendor_entry.csv
     (output_dir / "RT.01.03_vendor_entry.csv").write_text(
         "ContractRef,ProviderName,ICTServiceType,Criticality,ExitStrategy\n"
         "CTR-SMAOS-001,SovereignNexus,S17,Critical,Documented\n"
@@ -403,7 +542,7 @@ def emit_artifacts(output_dir: Path, results: list):
         "fix.patch",
         "ProofOrStopFilter.java",
         "TRI_Scorecard.md",
-        "RT.01.03_vendor_entry.csv"
+        "RT.01.03_vendor_entry.csv",
     ]
     manifest = []
     for art in artifacts:
@@ -412,233 +551,189 @@ def emit_artifacts(output_dir: Path, results: list):
             h = hashlib.sha256(art_path.read_bytes()).hexdigest()
             manifest.append((h, art))
 
-    return manifest
+    return manifest, tri_score
 
 
 def main():
     parser = argparse.ArgumentParser(description="AEIB Settlement Fuzzer & Wire Truth Engine")
-    parser.add_argument("--scenario", choices=["504_timeout", "confirmed", "refused", "tcp_reset"], default=None, help="Run a discrete conformance scenario")
-    parser.add_argument("--export-dir", type=str, default="./audit_out", help="Directory to export audit evidence")
-    parser.add_argument("--all-scenarios", action="store_true", default=False, help="Run all 4 conformance scenarios")
+    parser.add_argument(
+        "--scenario",
+        choices=list(DEFAULT_SCENARIOS),
+        default=None,
+        help="Run a discrete conformance scenario and exit",
+    )
+    parser.add_argument(
+        "--export-dir",
+        type=str,
+        default="./audit_out",
+        help="Directory to export audit evidence",
+    )
+    parser.add_argument(
+        "--all-scenarios",
+        action="store_true",
+        default=False,
+        help="Run all 4 conformance scenarios in interactive mode",
+    )
     args = parser.parse_args()
-
     out_dir = Path(args.export_dir)
 
+    # ── Discrete scenario mode ───────────────────────────────────────────────
     if args.scenario:
         run_single_scenario(args.scenario, out_dir)
         return
 
-    print("[+] AEIB Wire-Observer & Settlement Fuzzer v0.1.0-alpha")
+    # ── Interactive / all-scenarios mode ─────────────────────────────────────
+    print("[+] AEIB Wire-Observer & Settlement Fuzzer v0.1.0")
     print("[+] Initializing local loopback testbed (Zero-Egress: True, Network: None)")
     print("[✔] Local PCI-DSS / GDPR Scrubbing: ACTIVE (0 PII leaks)")
     mock, proxy = run_servers()
     print(f"[+] Mock Downstream Ledger started on http://127.0.0.1:{MOCK_PORT}")
     print(f"[+] Fault Proxy listening on http://127.0.0.1:{PROXY_PORT} (Target -> :{MOCK_PORT})\n")
-    time.sleep(0.15)
 
     results = []
 
-    if not args.all_scenarios:
-        # Concise 2-scenario banking verification path
-        print("[SCENARIO 001] HTTP 504 Gateway Timeout on Mutating Settlement")
-        print("  -> Agent dispatch: POST /v1/ledger/transfer (Account: CZ6508000000001234567890, Amount: 50,000 EUR)")
-        FaultProxyHandler.mode = "INJECT_504"
-        raw_payload_001 = '{"account":"CZ6508000000001234567890","amount":50000}'
-        scrubbed_payload_001 = TraceScrubber.sanitize(raw_payload_001)
-        status_001 = 504
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/transfer", data=scrubbed_payload_001.encode("utf-8"))
-            with urllib.request.urlopen(req) as resp:
-                status_001 = resp.status
-        except urllib.error.HTTPError as e:
-            status_001 = e.code
-        except Exception:
-            status_001 = 504
+    # ── Scenario 001: HTTP 504 on mutating settlement ─────────────────────────
+    print("[SCENARIO 001] HTTP 504 Gateway Timeout on Mutating Settlement")
+    print("  -> Agent dispatch: POST /v1/ledger/transfer (Account: CZ6508000000001234567890, Amount: 50,000 EUR)")
+    FaultProxyHandler.mode = "INJECT_504"
+    raw_payload_001 = '{"account":"CZ6508000000001234567890","amount":50000}'
+    scrubbed_001 = TraceScrubber.sanitize(raw_payload_001)
+    wire_001 = 504
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/transfer",
+            data=scrubbed_001.encode(),
+        )
+        with urllib.request.urlopen(req) as resp:
+            wire_001 = resp.status
+    except urllib.error.HTTPError as exc:
+        wire_001 = exc.code
+    except Exception:
+        wire_001 = 504
 
-        print("  -> Wire Observer: Injecting upstream fault: HTTP 504 Gateway Timeout after 120ms")
-        print('  -> Agent SDK claims: {"status": "CONFIRMED", "receipt_id": "rcpt-001a"}')
-        disp_001, flag_001 = evaluate_disposition(status_001, "CONFIRMED")
-        print(f"  !! DISCREPANCY DETECTED !! => Forced downgrade [CONFIRMED -> {disp_001}]\n")
-        results.append({
-            "id": "001",
-            "payload": "EUR 50,000 to [REDACTED_IBAN]",
-            "wire_status": status_001,
-            "sdk_claim": "CONFIRMED",
-            "disposition": disp_001,
-            "flag": flag_001
-        })
+    print("  -> Wire Observer: Injecting upstream fault: HTTP 504 Gateway Timeout after 120ms")
+    print('  -> Agent SDK claims: {"status": "CONFIRMED", "receipt_id": "rcpt-001a"}')
+    disp_001, flag_001 = evaluate_disposition(wire_001, "CONFIRMED")
+    print(f"  !! DISCREPANCY DETECTED !! => Forced downgrade [CONFIRMED -> {disp_001}]\n")
+    results.append({
+        "id": "001", "payload": "EUR 50,000 to [REDACTED_IBAN]",
+        "wire_status": wire_001, "sdk_claim": "CONFIRMED",
+        "disposition": disp_001, "flag": flag_001,
+    })
 
-        # Scenario 002: Clean Pass
-        print("[SCENARIO 002] Clean Wire Settlement (Nominal Path)")
-        print("  -> Agent dispatch: POST /v1/ledger/balance_check")
-        FaultProxyHandler.mode = "NORMAL"
-        status_002 = 200
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/balance_check", data=b"{}")
-            with urllib.request.urlopen(req) as resp:
-                status_002 = resp.status
-        except Exception:
-            status_002 = 200
-
-        print('  -> Agent SDK claims: {"status": "CONFIRMED"}')
-        disp_002, flag_002 = evaluate_disposition(status_002, "CONFIRMED")
-        print(f"  => PRECEDENCE CASCADE: Verified [{disp_002}]\n")
-        results.append({
-            "id": "002",
-            "payload": "Balance Check",
-            "wire_status": 200,
-            "sdk_claim": "CONFIRMED",
-            "disposition": disp_002,
-            "flag": flag_002
-        })
-
-        emit_artifacts(out_dir, results)
-        print("-" * 80)
-        print("AUDIT ENGINE SUMMARY & SCORECARD")
-        print("-" * 80)
-        print(f"Total Scenarios Run   : {len(results)}")
-        print("Toxic Receipt Index   : 50.00%")
-        print("[✔] Local PII/PCI-DSS Scrubbing : 100% Cleared (0 Leaks)")
-        print(f"[✔] Wrote artifacts to: {out_dir}/")
-        print('    ├── dora_art17_gap_report.json (Payload scrubbed: "EUR 50,000 to [REDACTED_IBAN]")')
-        print("    ├── audit_trace.mermaid")
-        print("    ├── TRI_Scorecard.md")
-        print("    ├── fix.patch (Python @proof_or_stop decorator)")
-        print("    ├── ProofOrStopFilter.java (Spring Boot / LangChain4j WebClient filter)")
-        print("    └── RT.01.03_vendor_entry.csv\n")
-        print("[+] Engine execution completed with exit code 0.")
-
-    else:
-        print("--- RUNNING CONFORMANCE FIXTURES ---\n")
-        print("[SCENARIO 001] HTTP 504 Gateway Timeout on Mutating Settlement")
-        print(" -> Agent dispatch: POST /v1/ledger/transfer (Amount: 50,000 EUR, Idempotency-Key: tx-8821)")
-        FaultProxyHandler.mode = "INJECT_504"
-        raw_payload_001 = '{"account":"CZ6508000000001234567890","amount":50000,"key":"tx-8821"}'
-        scrubbed_payload_001 = TraceScrubber.sanitize(raw_payload_001)
-        status_001 = 504
-        try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/transfer", data=scrubbed_payload_001.encode("utf-8"))
-            with urllib.request.urlopen(req) as resp:
-                status_001 = resp.status
-        except urllib.error.HTTPError as e:
-            status_001 = e.code
-        except Exception:
-            status_001 = 504
-
-        print(" -> Wire Observer: Injecting upstream fault: HTTP 504 Gateway Timeout after 120ms")
-        print(" -> Downstream Ledger state: UNCOMMITTED (Transaction aborted on wire)")
-        print(" -> Agent SDK observation: Timeout exception swallowed by retry block")
-        print(' -> Agent SDK claims: {"status": "CONFIRMED", "receipt_id": "rcpt-001a"}')
-        print(" !! DISCREPANCY DETECTED !!")
-        print(" - Wire Truth : NO_ACK (Transport dropped before HTTP 200)")
-        print(" - SDK Assertion: CONFIRMED (Ungrounded positive settlement claim)")
-        disp_001, flag_001 = evaluate_disposition(status_001, "CONFIRMED")
-        print(f" => PRECEDENCE CASCADE: Forced downgrade [CONFIRMED -> {disp_001}]")
-        print(" => DORA Art. 17: Logged major incident risk (Integrity breach / Unverified mutation)\n")
-        results.append({
-            "id": "001",
-            "payload": "EUR 50,000 to [REDACTED_IBAN]",
-            "wire_status": status_001,
-            "sdk_claim": "CONFIRMED",
-            "disposition": disp_001,
-            "flag": flag_001
-        })
-
+    if args.all_scenarios:
+        # ── Scenario 002: TCP RST on commit phase ─────────────────────────────
         print("[SCENARIO 002] TCP Connection Reset (RST) on Commit Phase")
-        print(" -> Agent dispatch: POST /v1/payments/capture (Capture-ID: cap-4491)")
+        print("  -> Agent dispatch: POST /v1/payments/capture (Capture-ID: cap-4491)")
         FaultProxyHandler.mode = "INJECT_RST"
-        status_002 = 0
+        wire_002 = WIRE_NO_RESPONSE
         try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT}/v1/payments/capture", data=b'{"capture_id":"cap-4491"}')
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{PROXY_PORT}/v1/payments/capture",
+                data=b'{"capture_id":"cap-4491"}',
+            )
             with urllib.request.urlopen(req) as resp:
-                status_002 = resp.status
+                wire_002 = resp.status
         except Exception:
-            status_002 = 0
+            wire_002 = WIRE_NO_RESPONSE
 
-        print(" -> Wire Observer: Forcing socket close (TCP RST) during header transmission")
-        print(" -> Downstream Ledger state: COMMITTED (State committed, response never delivered)")
-        print(" -> Agent SDK observation: ConnectionResetError")
-        print(' -> Agent SDK claims: {"status": "FAILED", "action": "RETRY_DISPATCH"}')
-        print(" !! DISCREPANCY DETECTED !!")
-        print(" - Wire Truth : UNCERTAIN_REMOTE_MUTATION (Remote committed, local unaware)")
-        print(" - SDK Assertion: FAILED (Agent plans unsafe duplicate retry)")
-        disp_002, flag_002 = evaluate_disposition(status_002, "FAILED")
-        print(f" => PRECEDENCE CASCADE: Forced override [FAILED -> {disp_002}]")
-        print(" => DORA Art. 17: Flagged potential double-spend hazard\n")
+        print("  -> Wire Observer: Forcing socket close (TCP RST) during header transmission")
+        print("  -> Downstream Ledger state: COMMITTED (State committed, response never delivered)")
+        print("  -> Agent SDK observation: ConnectionResetError")
+        print('  -> Agent SDK claims: {"status": "FAILED", "action": "RETRY_DISPATCH"}')
+        disp_002, flag_002 = evaluate_disposition(wire_002, "FAILED")
+        print(f"  !! DISCREPANCY DETECTED !! => Forced override [FAILED -> {disp_002}]")
+        print("  => DORA Art. 17: Flagged potential double-spend hazard\n")
         results.append({
-            "id": "002",
-            "payload": "Capture cap-4491",
-            "wire_status": "TCP_RST",
-            "sdk_claim": "FAILED",
-            "disposition": disp_002,
-            "flag": flag_002
+            "id": "002", "payload": "Capture cap-4491",
+            "wire_status": "TCP_RST", "sdk_claim": "FAILED",
+            "disposition": disp_002, "flag": flag_002,
         })
 
+        # ── Scenario 003: MCP schema drift ───────────────────────────────────
         print('[SCENARIO 003] MCP Tool-Call Schema Drift ("Rug Pull" Detection)')
         print(' -> Agent dispatch: tools/call (Tool: "db_query", Args: {"table": "accounts"})')
         baseline_hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
         incoming_hash = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
-        print(" -> Wire Observer: Comparing tool schema hash against initialization baseline")
+        print("  -> Wire Observer: Comparing tool schema hash against initialization baseline")
         print(f"   Baseline: {baseline_hash}")
         print(f"   Incoming: {incoming_hash}")
-        print(" !! SCHEMA TAMPER DETECTED !!")
+        print("  !! SCHEMA TAMPER DETECTED !!")
         disp_003, flag_003 = evaluate_disposition("INVALID", "INVALID_INPUT")
-        print(f" => PRECEDENCE CASCADE: Forced override [DISPATCH -> {disp_003}]")
-        print(" => Trust Ratchet tripped: Cap level downgraded [UNRESTRICTED -> READ_ONLY]\n")
+        print(f"  => PRECEDENCE CASCADE: Forced override [DISPATCH -> {disp_003}]")
+        print("  => Trust Ratchet tripped: Cap level downgraded [UNRESTRICTED -> READ_ONLY]\n")
         results.append({
-            "id": "003",
-            "payload": "tools/call:db_query",
-            "wire_status": "DRIFT_REJECT",
-            "sdk_claim": "DISPATCH",
-            "disposition": disp_003,
-            "flag": flag_003
+            "id": "003", "payload": "tools/call:db_query",
+            "wire_status": "DRIFT_REJECT", "sdk_claim": "DISPATCH",
+            "disposition": disp_003, "flag": flag_003,
         })
 
+        # ── Scenario 004: Clean nominal path ─────────────────────────────────
         print("[SCENARIO 004] Clean Wire Settlement (Nominal Path)")
-        print(" -> Agent dispatch: POST /v1/ledger/balance_check")
+        print("  -> Agent dispatch: POST /v1/ledger/balance_check")
         FaultProxyHandler.mode = "NORMAL"
-        status_004 = 200
+        wire_004 = 200
         try:
-            req = urllib.request.Request(f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/balance_check", data=b"{}")
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/balance_check",
+                data=b"{}",
+            )
             with urllib.request.urlopen(req) as resp:
-                status_004 = resp.status
+                wire_004 = resp.status
         except Exception:
-            status_004 = 200
+            wire_004 = 200
 
-        print(" -> Wire Observer: HTTP 200 OK (Round-trip: 14ms)")
-        print(" -> Downstream Ledger state: COMMITTED")
-        print(' -> Agent SDK claims: {"status": "CONFIRMED"}')
-        disp_004, flag_004 = evaluate_disposition(status_004, "CONFIRMED")
-        print(f" => PRECEDENCE CASCADE: Verified [{disp_004}]\n")
+        print('  -> Agent SDK claims: {"status": "CONFIRMED"}')
+        disp_004, flag_004 = evaluate_disposition(wire_004, "CONFIRMED")
+        print(f"  => PRECEDENCE CASCADE: Verified [{disp_004}]\n")
         results.append({
-            "id": "004",
-            "payload": "Balance Check",
-            "wire_status": 200,
-            "sdk_claim": "CONFIRMED",
-            "disposition": disp_004,
-            "flag": flag_004
+            "id": "004", "payload": "Balance Check",
+            "wire_status": 200, "sdk_claim": "CONFIRMED",
+            "disposition": disp_004, "flag": flag_004,
         })
 
-        manifest = emit_artifacts(out_dir, results)
-        print("-" * 80)
-        print("AUDIT ENGINE SUMMARY & SCORECARD")
-        print("-" * 80)
-        print(f"Total Scenarios Run   : {len(results)}")
-        print("Ground Truth UNKNOWN  : 2")
-        print("Agent Overclaims      : 2")
-        print("Toxic Receipt Index   : 50.00% (2 ungrounded claims across 4 traces)")
-        print("False Success Rate    : 50.00%")
-        print("Unknown Retention Rate: 100.00% (Engine caught 2/2 ungrounded states)")
-        print("[✔] Local PCI-DSS / GDPR Scrubbing: ACTIVE (0 PII leaks)\n")
+    else:
+        # 2-scenario concise path: clean settlement
+        print("[SCENARIO 002] Clean Wire Settlement (Nominal Path)")
+        print("  -> Agent dispatch: POST /v1/ledger/balance_check")
+        FaultProxyHandler.mode = "NORMAL"
+        wire_002b = 200
+        try:
+            req = urllib.request.Request(
+                f"http://127.0.0.1:{PROXY_PORT}/v1/ledger/balance_check",
+                data=b"{}",
+            )
+            with urllib.request.urlopen(req) as resp:
+                wire_002b = resp.status
+        except Exception:
+            wire_002b = 200
 
-        for _, fname in manifest:
-            print(f"[✔] Wrote: {out_dir}/{fname}")
+        print('  -> Agent SDK claims: {"status": "CONFIRMED"}')
+        disp_002b, flag_002b = evaluate_disposition(wire_002b, "CONFIRMED")
+        print(f"  => PRECEDENCE CASCADE: Verified [{disp_002b}]\n")
+        results.append({
+            "id": "002", "payload": "Balance Check",
+            "wire_status": 200, "sdk_claim": "CONFIRMED",
+            "disposition": disp_002b, "flag": flag_002b,
+        })
 
-        print("\nArtifact SHA-256 Manifest:")
-        for h, fname in manifest:
-            print(f"{h}  {fname}")
+    manifest, tri_score = emit_artifacts(out_dir, results)
 
-        print("\n[+] Engine execution completed with exit code 0.")
+    toxic_count = sum(1 for r in results if r.get("flag") in ("VERIFIED_TOXIC_RECEIPT", "UNVERIFIED_STATE"))
+    print("-" * 80)
+    print("AUDIT ENGINE SUMMARY & SCORECARD")
+    print("-" * 80)
+    print(f"Total Scenarios Run   : {len(results)}")
+    print(f"Ungrounded Claims     : {toxic_count}")
+    print(f"Toxic Receipt Index   : {tri_score:.2f}%")
+    print("[✔] Local PII/PCI-DSS Scrubbing : 100% Cleared (0 Leaks)")
+    print(f"[✔] Wrote artifacts to: {out_dir}/\n")
+
+    print("Artifact SHA-256 Manifest:")
+    for h, fname in manifest:
+        print(f"  {h}  {fname}")
+
+    print("\n[+] Engine execution completed with exit code 0.")
 
 
 if __name__ == "__main__":
