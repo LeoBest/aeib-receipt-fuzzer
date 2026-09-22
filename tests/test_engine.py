@@ -73,3 +73,17 @@ def test_invalid_scenario():
     cmd = [sys.executable, str(ROOT / "run.py"), "--scenario", "invalid"]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 2
+
+def test_ghost_audit_scanner():
+    cmd = [sys.executable, str(ROOT / "ghost_audit_scanner.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
+    assert res.returncode == 0
+    assert "GOVERNANCE INTENSITY INDEX (GII)" in res.stdout
+    assert "0 bytes of egress" in res.stdout
+
+def test_validate_dora_register():
+    cmd = [sys.executable, str(ROOT / "validate_dora_register.py")]
+    res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))
+    assert res.returncode == 0
+    assert "SMAOS DORA xBRL-CSV Compiler" in res.stdout
+    assert "R0010" in res.stdout

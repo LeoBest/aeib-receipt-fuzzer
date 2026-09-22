@@ -1,3 +1,4 @@
 audit_out/
 .pre-commit-cache/
 __pycache__/
+smaos_verify/target/
