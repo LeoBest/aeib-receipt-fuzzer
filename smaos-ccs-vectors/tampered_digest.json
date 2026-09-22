@@ -1,0 +1,8 @@
+{
+    "vector_id": "V-002",
+    "description": "Tampered payload digest",
+    "wire_status": 200,
+    "sdk_claimed_state": "INVALID_INPUT",
+    "expected_disposition": "INVALID_INPUT",
+    "tamper_flag": true
+}

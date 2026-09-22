@@ -1,0 +1,7 @@
+{
+    "vector_id": "V-001",
+    "description": "Valid nominal trace",
+    "wire_status": 200,
+    "sdk_claimed_state": "CONFIRMED",
+    "expected_disposition": "CONFIRMED"
+}
