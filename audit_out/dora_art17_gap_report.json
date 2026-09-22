@@ -8,6 +8,14 @@
       "sdk_claim": "CONFIRMED",
       "disposition": "UNKNOWN",
       "flag": "VERIFIED_TOXIC_RECEIPT"
+    },
+    {
+      "id": "002",
+      "payload": "Capture cap-4491",
+      "wire_status": "TCP_RST",
+      "sdk_claim": "FAILED",
+      "disposition": "CONFLICT",
+      "flag": "UNVERIFIED_STATE"
     }
   ],
   "telemetry_source": "wire_level_fuzzer_v0.1",
