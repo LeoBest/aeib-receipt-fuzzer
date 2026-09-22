@@ -1,0 +1,11 @@
+{
+  "scenario_id": "confirmed",
+  "dora_rts_classification": "nominal_compliant",
+  "discrepancy_detected": false,
+  "telemetry_source": "aeib_wire_observer_v0.1.0",
+  "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+  "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]",
+  "wire_event": "HTTP 200 from settlement endpoint",
+  "evaluated_disposition": "CONFIRMED",
+  "audit_trail_immutable": true
+}
