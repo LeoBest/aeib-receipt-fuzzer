@@ -1,0 +1,26 @@
+sequenceDiagram
+    autonumber
+    actor Agent as Autonomous Agent
+    participant Wire as Fault Proxy / Gateway
+    participant Ledger as Downstream Bank
+    participant Audit as smaos-audit Engine
+    Note over Agent,Ledger: Scenario: 001
+    Agent->>Wire: POST /execute (EUR 50,000)
+    Wire--xAgent: HTTP 504 / Drop
+    Agent->>Agent: Claims status: 'CONFIRMED'
+    Audit->>Agent: Precedence Cascade Enforces: UNKNOWN
+    Note over Agent,Ledger: Scenario: 002
+    Agent->>Wire: POST /execute (Capture cap-4491)
+    Wire--xAgent: HTTP TCP_RST / Drop
+    Agent->>Agent: Claims status: 'FAILED'
+    Audit->>Agent: Precedence Cascade Enforces: CONFLICT
+    Note over Agent,Ledger: Scenario: 003
+    Agent->>Wire: POST /execute (tools/call:db_query)
+    Wire--xAgent: HTTP DRIFT_REJECT / Drop
+    Agent->>Agent: Claims status: 'DISPATCH'
+    Audit->>Agent: Precedence Cascade Enforces: INVALID_INPUT
+    Note over Agent,Ledger: Scenario: 004
+    Agent->>Wire: POST /execute (Balance Check)
+    Wire--xAgent: HTTP 200 / Drop
+    Agent->>Agent: Claims status: 'CONFIRMED'
+    Audit->>Agent: Precedence Cascade Enforces: CONFIRMED
