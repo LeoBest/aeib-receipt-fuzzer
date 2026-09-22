@@ -1,24 +1,19 @@
 {
   "dora_rts_classification": "4h_major_incident",
+  "dora_article_17_support": "Supports DORA Article 17 incident classification by producing a machine-readable timeline and wire-evidence bundle for risk team review",
   "incidents": [
     {
-      "id": "001",
+      "id": "trace-001",
       "payload": "EUR 50,000 to [REDACTED_IBAN]",
       "wire_status": 504,
       "sdk_claim": "CONFIRMED",
-      "disposition": "UNKNOWN",
-      "flag": "VERIFIED_TOXIC_RECEIPT"
-    },
-    {
-      "id": "002",
-      "payload": "Capture cap-4491",
-      "wire_status": "TCP_RST",
-      "sdk_claim": "FAILED",
-      "disposition": "CONFLICT",
-      "flag": "UNVERIFIED_STATE"
+      "observer_disposition": "UNKNOWN",
+      "finding": "UNSUPPORTED_CONFIRMATION_CLAIM",
+      "log_tampering": false,
+      "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE"
     }
   ],
-  "telemetry_source": "wire_level_fuzzer_v0.1",
+  "telemetry_source": "smaos_wire_observer_v0.1.0",
   "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
   "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]"
 }
