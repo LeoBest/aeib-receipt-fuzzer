@@ -5,9 +5,9 @@ sequenceDiagram
     participant Gateway as Core Banking Gateway
 
     Observer->>Agent: observes outbound
-    Agent->>Gateway: POST /v1/settle (EUR 50,000)
-    Gateway--xAgent: HTTP 504 / TCP RST
+    Agent->>Gateway: POST /v1/settle (EUR 50,000 to [REDACTED_IBAN])
+    Gateway--xAgent: HTTP 504 Gateway Timeout / Drop
     Note over Agent: SDK swallows exception
     Agent->>Agent: logs {"status": "CONFIRMED"}
     Observer->>Observer: compares wire state vs. claimed state
-    Observer->>Observer: emits UNKNOWN + evidence bundle
+    Observer->>Observer: emits dispatched_unconfirmed + evidence bundle

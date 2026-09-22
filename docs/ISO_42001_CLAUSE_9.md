@@ -6,7 +6,7 @@
 
 ## 1. The ISO/IEC 42001 Standard & Clause 9 Requirements
 
-**ISO/IEC 42001:2023** is the international standard for Artificial Intelligence Management Systems (AIMS). 
+**ISO/IEC 42001:2023** is the international standard for Artificial Intelligence Management Systems (AIMS).
 
 Under **Clause 9 (Performance Evaluation)** and **Clause 9.2 (Internal Audit)**, certified organizations must evaluate the performance and effectiveness of their AI systems. Lead ISO auditors explicitly mandate:
 1. **Objective Evidence:** Written governance policies and prompt-level guardrails are legally insufficient. Organizations must produce verifiable runtime records that controls actually executed at the moment of failure.

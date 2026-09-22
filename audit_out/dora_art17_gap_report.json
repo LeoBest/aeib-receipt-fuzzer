@@ -7,13 +7,13 @@
       "payload": "EUR 50,000 to [REDACTED_IBAN]",
       "wire_status": 504,
       "sdk_claim": "CONFIRMED",
-      "observer_disposition": "UNKNOWN",
+      "observer_disposition": "dispatched_unconfirmed",
       "finding": "UNSUPPORTED_CONFIRMATION_CLAIM",
       "log_tampering": false,
       "audit_stream": "INDEPENDENT_EVIDENCE_BUNDLE"
     }
   ],
-  "telemetry_source": "smaos_wire_observer_v0.1.0",
+  "telemetry_source": "smaos_wire_observer_v0.2.0",
   "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
   "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]"
 }

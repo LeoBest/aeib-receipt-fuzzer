@@ -39,24 +39,24 @@ def test_run_single_scenario_cli(tmp_path, scenario, exp_disp, exp_disc):
     cmd = [sys.executable, str(ROOT / "run.py"), "--scenario", scenario, "--export-dir", str(tmp_path)]
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0, f"Stderr: {res.stderr}"
-    
+
     obj = json.loads(res.stdout)
     assert obj["evaluated_disposition"] == exp_disp
     assert obj["discrepancy_detected"] == exp_disc
-    
+
     raw_iban = "CZ6508000000001234567890"
     assert raw_iban not in res.stdout
-    
+
     # Artifact checks
     mermaid = (tmp_path / "audit_trace.mermaid").read_text()
     assert "sequenceDiagram" in mermaid
     assert raw_iban not in mermaid
-    
+
     dr = json.loads((tmp_path / "disposition_report.json").read_text())
     assert dr["final_disposition"] == exp_disp
-    
+
     assert (tmp_path / "dora_art17_gap_report.json").exists()
-    
+
     java = (tmp_path / "ProofOrStopFilter.java").read_text()
     assert "class AgentDiscrepancyException" in java
     assert "IOException" in java

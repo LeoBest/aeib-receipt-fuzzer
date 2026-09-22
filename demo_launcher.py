@@ -265,7 +265,7 @@ def main():
             </div>
         </div>
 
-        
+
         <div class="panel">
             <h2>🔐 Cryptographic Air-Gap Verifier</h2>
             <p>Drag the generated <code>disposition_report.json</code> here. Verified 100% locally via WebAssembly.</p>
@@ -274,7 +274,7 @@ def main():
             </div>
             <pre id="verify-result" class="terminal" style="display: none;"></pre>
         </div>
-        
+
         <div class="metric-cards">
             <div class="card">
                 <div class="card-label">Unsupported Confirmation Claims</div>

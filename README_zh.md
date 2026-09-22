@@ -6,8 +6,8 @@
 [![Standard: CAICT ATH 1.0](https://img.shields.io/badge/中国信通院-ATH_1.0_可信握手-green.svg)]()
 [![Stack: Java 21+ | Spring Boot | Python](https://img.shields.io/badge/运行时-Java_21+_|_Python_|_MCP-informational.svg)]()
 
-> **自主 AI 智能体（Agent）的主权清算与真实性验证层：**  
-> 现有的智能体开发框架几乎都会在本地日志记录 `CONFIRMED`（已确认）。但在真实网络故障下（HTTP 504 网关超时、TCP RST 异常断连），绝大多数智能体并没有检测到底层金融或业务系统是否真正完成了状态清算。  
+> **自主 AI 智能体（Agent）的主权清算与真实性验证层：**
+> 现有的智能体开发框架几乎都会在本地日志记录 `CONFIRMED`（已确认）。但在真实网络故障下（HTTP 504 网关超时、TCP RST 异常断连），绝大多数智能体并没有检测到底层金融或业务系统是否真正完成了状态清算。
 > `aeib-receipt-fuzzer` 是一个纯本地运行、气隙隔离的线缆级故障注入与验证引擎，拦截智能体工具调用，模拟网络降级，捕获虚假确认，并生成符合监管标准的可信审计凭据。
 
 ---
