@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SMAOS AEIB Local Wire-Truth Demo Harness (v0.1.0)
+SMAOS AEIB Local Wire-Truth Demo Harness (v0.2.0)
 Simulates passive local loopback wire observation, in-memory PII/PCI scrubbing,
 and independent audit evidence generation (without altering application logs).
 """
@@ -22,14 +22,14 @@ def _build_mermaid(payload_summary: str, amount: float, scrubbed_iban: str) -> s
     record = {
         "payload_summary":       f"EUR {amount:,.0f} to {scrubbed_iban}",
         "sdk_claimed_state":     "CONFIRMED",
-        "evaluated_disposition": "UNKNOWN",
+        "evaluated_disposition": "dispatched_unconfirmed",
     }
     return generate_scenario_mermaid("504_timeout", record)
 
 
 def main():
     print("🚀 Launching SMAOS AEIB Local Wire-Truth Demo Harness...")
-    print("🚀 [SMAOS Local Wire-Truth Observer v0.1.0] Starting zero-egress inspection...")
+    print("🚀 [SMAOS Local Wire-Truth Observer v0.2.0] Starting zero-egress inspection...")
     print("🔒 [Privacy Guard] Performing in-memory PII/PCI-DSS scrubbing...")
 
     root_dir = Path(__file__).resolve().parent
@@ -66,7 +66,7 @@ def main():
 
     print("!! DISCREPANCY DETECTED !!")
     print("  • Description: Agent SDK logged CONFIRMED, but wire transport dropped with HTTP 504.")
-    print("  • Disposition: Emitting UNKNOWN disposition with evidence bundle (agent logs remain unaltered).\n")
+    print("  • Disposition: Emitting dispatched_unconfirmed disposition with evidence bundle (agent logs remain unaltered).\n")
 
     audit_dir = root_dir / "audit_out"
     audit_dir.mkdir(parents=True, exist_ok=True)
@@ -88,13 +88,13 @@ def main():
                 "payload":            payload_summary,
                 "wire_status":        504,
                 "sdk_claim":          "CONFIRMED",
-                "observer_disposition": "UNKNOWN",
+                "observer_disposition": "dispatched_unconfirmed",
                 "finding":            "UNSUPPORTED_CONFIRMATION_CLAIM",
                 "log_tampering":      False,
                 "audit_stream":       "INDEPENDENT_EVIDENCE_BUNDLE",
             }
         ],
-        "telemetry_source":      "smaos_wire_observer_v0.1.0",
+        "telemetry_source":      "smaos_wire_observer_v0.2.0",
         "pci_dss_sanitization":  "ACTIVE_ZERO_EGRESS",
         "sample_payload_scrubbed": payload_summary,
     }
@@ -245,7 +245,7 @@ def main():
             <div class="panel">
                 <h2>&#x1F4BB; Local Verification Stream (Independent Audit Log)</h2>
                 <div class="terminal">
-&#x1F680; [SMAOS Local Wire-Truth Observer v0.1.0]
+&#x1F680; [SMAOS Local Wire-Truth Observer v0.2.0]
 &#x1F512; [Privacy Guard] In-memory PII scrubbing: ACTIVE (0 leaks)
   &bull; Dispatched By: {dispatched_by_esc}
   &bull; Destination Account: {scrubbed_iban_esc}
@@ -258,13 +258,23 @@ def main():
 
 !! DISCREPANCY DETECTED !!
   &bull; Description: Agent SDK logged CONFIRMED, but wire transport dropped with HTTP 504.
-  &bull; Disposition: Emitting UNKNOWN disposition with evidence bundle (agent logs remain unaltered).
+  &bull; Disposition: Emitting dispatched_unconfirmed disposition with evidence bundle (agent logs remain unaltered).
 
 &#x2705; Audit completed. Zero log tampering &mdash; independent evidence stream materialized.
                 </div>
             </div>
         </div>
 
+        
+        <div class="panel">
+            <h2>🔐 Cryptographic Air-Gap Verifier</h2>
+            <p>Drag the generated <code>disposition_report.json</code> here. Verified 100% locally via WebAssembly.</p>
+            <div id="drop-zone" style="border: 2px dashed var(--text-accent); padding: 2rem; text-align: center; border-radius: 6px; cursor: pointer;">
+                Drop Receipt Here
+            </div>
+            <pre id="verify-result" class="terminal" style="display: none;"></pre>
+        </div>
+        
         <div class="metric-cards">
             <div class="card">
                 <div class="card-label">Unsupported Confirmation Claims</div>

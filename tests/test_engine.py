@@ -9,14 +9,14 @@ sys.path.insert(0, str(ROOT))
 from run import evaluate_disposition, TraceScrubber, WIRE_NO_RESPONSE
 
 @pytest.mark.parametrize("wire_status,sdk_claim,exp_disp,exp_flag", [
-    (504, "CONFIRMED", "UNKNOWN", "VERIFIED_TOXIC_RECEIPT"),
-    (WIRE_NO_RESPONSE, "CONFIRMED", "UNKNOWN", "VERIFIED_TOXIC_RECEIPT"),
+    (504, "CONFIRMED", "dispatched_unconfirmed", "VERIFIED_TOXIC_RECEIPT"),
+    (WIRE_NO_RESPONSE, "CONFIRMED", "dispatched_unconfirmed", "VERIFIED_TOXIC_RECEIPT"),
     (WIRE_NO_RESPONSE, "FAILED", "CONFLICT", "UNVERIFIED_STATE"),
     (WIRE_NO_RESPONSE, "RETRY_DISPATCH", "CONFLICT", "UNVERIFIED_STATE"),
     ("INVALID", "INVALID_INPUT", "INVALID_INPUT", "SCHEMA_TAMPER"),
     (200, "CONFIRMED", "CONFIRMED", "VERIFIED_VALID"),
     (403, "REFUSED", "REFUSED", "POLICY_GATE_REJECT"),
-    (WIRE_NO_RESPONSE, "UNKNOWN", "UNKNOWN", "UNCERTAIN"),
+    (WIRE_NO_RESPONSE, "UNKNOWN", "dispatched_unconfirmed", "UNCERTAIN"),
 ])
 def test_evaluate_disposition(wire_status, sdk_claim, exp_disp, exp_flag):
     got_disp, got_flag = evaluate_disposition(wire_status, sdk_claim)
@@ -30,10 +30,10 @@ def test_trace_scrubber():
     assert TraceScrubber.sanitize("test@example.com") == "[REDACTED_EMAIL]"
 
 @pytest.mark.parametrize("scenario,exp_disp,exp_disc", [
-    ("504_timeout", "UNKNOWN", True),
+    ("504_timeout", "dispatched_unconfirmed", True),
     ("confirmed", "CONFIRMED", False),
     ("refused", "REFUSED", False),
-    ("tcp_reset", "UNKNOWN", False),
+    ("tcp_reset", "dispatched_unconfirmed", False),
 ])
 def test_run_single_scenario_cli(tmp_path, scenario, exp_disp, exp_disc):
     cmd = [sys.executable, str(ROOT / "run.py"), "--scenario", scenario, "--export-dir", str(tmp_path)]
