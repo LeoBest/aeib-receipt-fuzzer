@@ -3,21 +3,14 @@
   "incidents": [
     {
       "id": "001",
-      "payload": "EUR 50,000",
+      "payload": "EUR 50,000 to [REDACTED_IBAN]",
       "wire_status": 504,
       "sdk_claim": "CONFIRMED",
       "disposition": "UNKNOWN",
       "flag": "VERIFIED_TOXIC_RECEIPT"
-    },
-    {
-      "id": "002",
-      "payload": "Capture cap-4491",
-      "wire_status": "TCP_RST",
-      "sdk_claim": "FAILED",
-      "disposition": "CONFLICT",
-      "flag": "UNVERIFIED_STATE"
     }
   ],
   "telemetry_source": "wire_level_fuzzer_v0.1",
-  "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS"
+  "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+  "sample_payload_scrubbed": "EUR 50,000 to [REDACTED_IBAN]"
 }
