@@ -50,6 +50,32 @@ def run_demo():
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SMAOS Wire-Truth Verification Dashboard</title>
+    <meta name="description" content="Air-gapped compliance engine preventing AI agent double-spends. Generates automated evidence for DORA RTS 2024/1772, ISO 42001, and ATH 1.0.">
+
+    <!-- OpenGraph / LinkedIn / Slack Unfurl -->
+    <meta property="og:type" content="website">
+    <meta property="og:url" content="https://sovereignnexus.github.io/aeib-receipt-fuzzer/">
+    <meta property="og:title" content="SMAOS: DORA & ISO 42001 Verification for AI Agents">
+    <meta property="og:description" content="Stop silent ledger drift. See how SMAOS intercepts HTTP 504 timeouts and forces ungrounded AI actions to an UNKNOWN state.">
+    <meta property="og:image" content="https://sovereignnexus.github.io/aeib-receipt-fuzzer/assets/executive-preview.png">
+
+    <!-- Schema.org B2B Software Application JSON-LD -->
+    <script type="application/ld+json">
+    {{
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "SMAOS Wire-Truth Engine",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Linux, macOS, Windows",
+      "description": "Enterprise verification layer for autonomous AI agents. Intercepts HTTP 504 timeouts, prevents silent double-spends, and generates DORA Article 17 and CAICT ATH 1.0 evidence.",
+      "offers": {{
+        "@type": "Offer",
+        "price": "1500",
+        "priceCurrency": "EUR",
+        "description": "48-Hour Diagnostic Staging Audit"
+      }}
+    }}
+    </script>
     <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
     <style>
         :root {{
