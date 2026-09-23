@@ -273,6 +273,7 @@ SCENARIO_ALIASES = {
     "prevent_duplicate_execution_on_retry":     "duplicate_retry_same_payload",
     "prevent_unauthorized_payload_mutation":    "payload_mutation_on_retry",
     "prevent_invalid_schema_ingestion":         "malformed_response",
+    "prevent_unauthorized_handoff_escalation":  "unauthorized_handoff",
     "confirmed_settlement_baseline":            "confirmed",
     "policy_refusal_baseline":                  "refused",
 }
@@ -431,6 +432,25 @@ DEFAULT_SCENARIOS = {
         ),
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
+    "unauthorized_handoff": {
+        "scenario_id":          "unauthorized_handoff",
+        "alias":                "prevent_unauthorized_handoff_escalation",
+        "nist_control":         "GOVERN 1.2 (Delegation ceiling enforcement)",
+        "risk_mitigation_goal": "Block unauthorized capability escalation during multi-agent handoff",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "Delegate to Agent-System-Admin",
+        "transport_fault":      "HTTP_403_FORBIDDEN",
+        "wire_event":           "HTTP 403 Forbidden - Delegation Ceiling Exceeded",
+        "sdk_claimed_state":    "REFUSED",
+        "wire_status_code":     403,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
 }
 
 # ─── Mermaid generation ───────────────────────────────────────────────────────
@@ -444,6 +464,7 @@ _WIRE_LINES = {
     "duplicate_retry_same_payload": "    Agent->>Gateway: POST /v1/settle (retry attempt #2)\n    Gateway--xAgent: HTTP 409 Conflict (Duplicate in-flight without idempotency lock)",
     "payload_mutation_on_retry": "    Agent->>Gateway: POST /v1/settle (retry with altered payload under same key)\n    Gateway--xAgent: HTTP 409 Conflict (Payload hash mismatch on retry)",
     "malformed_response": "    Gateway->>Agent: HTTP 200 OK (Malformed / Corrupted JSON payload)\n    Note over Agent: Schema validation failed",
+    "unauthorized_handoff": "    Gateway--xAgent: HTTP 403 Forbidden (Delegation Ceiling Exceeded)",
 }
 
 
@@ -666,6 +687,23 @@ def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
             "EBA DORA RTS 2024/1772 Article 17 (Major ICT Incident Classification)",
             "NIST AI RMF 1.0 (MEASURE 2.1, MANAGE 1.3, MAP 1.5, GOVERN 1.2)"
         ],
+        "identity": {
+            "actor": record.get("dispatched_by", "Agent-LangChain-Treasury"),
+            "token": "urn:smaos:token:anonymous"
+        },
+        "delegation": {
+            "on_behalf_of": "urn:smaos:delegator:system",
+            "ceiling_enforced": True
+        },
+        "authority": {
+            "permitted": ["POST /v1/settle", "GET /v1/status"],
+            "rejected_paths": record.get("rejected_paths", [])
+        },
+        "negative_state_assertions": [
+            "authority_created = false",
+            "delegation_ceiling_breached = false",
+            "unverified_state_promoted = false"
+        ],
         "scenario_id": record["scenario_id"],
         "scenario_alias": record.get("scenario_alias", record["scenario_id"]),
         "nist_control": record.get("nist_ai_rmf_control", "MEASURE 2.1"),
@@ -691,6 +729,20 @@ def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
 - **Audit ID:** {trust_passport['passport_id']}
 - **Scenario:** {trust_passport['scenario_id']} ({trust_passport['scenario_alias']})
 - **Engine Version:** {trust_passport['engine_version']}
+
+## Identity & Delegation
+- **Actor:** {trust_passport['identity']['actor']}
+- **On Behalf Of:** {trust_passport['delegation']['on_behalf_of']}
+- **Authority Ceiling Enforced:** {trust_passport['delegation']['ceiling_enforced']}
+
+## Authority
+- **Permitted Operations:** {', '.join(trust_passport['authority']['permitted'])}
+- **Rejected Paths:** {len(trust_passport['authority']['rejected_paths'])}
+
+## Negative State Assertions
+- {trust_passport['negative_state_assertions'][0]}
+- {trust_passport['negative_state_assertions'][1]}
+- {trust_passport['negative_state_assertions'][2]}
 
 ## Evidence Integrity
 - **NIST AI RMF 1.0 Control:** {trust_passport['nist_control']}

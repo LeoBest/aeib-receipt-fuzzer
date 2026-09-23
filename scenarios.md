@@ -29,6 +29,7 @@ LLM reasoning benchmarks, prompt injection/toxicity, model weights quality, or i
 | `duplicate_retry_same_payload` | **`prevent_duplicate_execution_on_retry`** | **MANAGE 1.3** (Idempotency enforcement against storms) | HTTP 409 duplicate retry in-flight | `CONFLICT` | `4h_major_incident` (unverified replay attempt) |
 | `payload_mutation_on_retry` | **`prevent_unauthorized_payload_mutation`** | **MAP 1.5** (Mutation detection under reused key) | HTTP 409 payload hash mismatch | `CONFLICT` | `4h_major_incident` (idempotency key tampering) |
 | `malformed_response` | **`prevent_invalid_schema_ingestion`** | **MEASURE 2.6** (Input/output contract validation) | HTTP 200 OK with corrupted JSON | `INVALID_INPUT` | `4h_major_incident` (unverified schema promotion) |
+| `unauthorized_handoff` | **`prevent_unauthorized_handoff_escalation`** | **GOVERN 1.2** (Delegation ceiling enforcement) | HTTP 403 Forbidden - Delegation Ceiling Exceeded | `REFUSED` | `nominal_compliant` (authorized refusal) |
 
 ---
 
