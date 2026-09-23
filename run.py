@@ -182,20 +182,26 @@ def evaluate_disposition(wire_status, sdk_claimed_status):
         int 200               — HTTP 200 OK received
         int 504               — HTTP 504 Gateway Timeout received
         int 403               — HTTP 403 Forbidden received
+        int 409               — HTTP 409 Conflict / idempotency violation
         WIRE_NO_RESPONSE (-1) — connection aborted before HTTP response (TCP RST, etc.)
         str "INVALID"         — schema / hash tamper detected (non-HTTP path)
+        str "MALFORMED_JSON"  — downstream response is malformed / corrupt
+        str "PAYLOAD_MUTATION"— payload altered under same idempotency key
+        str "DUPLICATE_RETRY" — retry without verified disposition
     """
+    # --- Schema / tool-call hash tamper or malformed response ---
+    if wire_status in ("INVALID", "MALFORMED_JSON") or sdk_claimed_status == "INVALID_INPUT":
+        return "INVALID_INPUT", "SCHEMA_TAMPER"
+
+    # --- Payload mutation or duplicate retry conflict ---
+    if wire_status in ("PAYLOAD_MUTATION", "DUPLICATE_RETRY", 409) or (
+        wire_status == WIRE_NO_RESPONSE and sdk_claimed_status in ("FAILED", "RETRY_DISPATCH")
+    ):
+        return "CONFLICT", "UNVERIFIED_STATE"
+
     # --- Timeout or connection abort with false CONFIRMED claim ---
     if wire_status in (504, WIRE_NO_RESPONSE) and sdk_claimed_status == "CONFIRMED":
         return "dispatched_unconfirmed", "VERIFIED_TOXIC_RECEIPT"
-
-    # --- Connection abort where agent plans unsafe retry ---
-    if wire_status == WIRE_NO_RESPONSE and sdk_claimed_status in ("FAILED", "RETRY_DISPATCH"):
-        return "CONFLICT", "UNVERIFIED_STATE"
-
-    # --- Schema / tool-call hash tamper ---
-    if wire_status == "INVALID" or sdk_claimed_status == "INVALID_INPUT":
-        return "INVALID_INPUT", "SCHEMA_TAMPER"
 
     # --- Clean settlement confirmation ---
     if wire_status == 200 and sdk_claimed_status == "CONFIRMED":
@@ -325,6 +331,70 @@ DEFAULT_SCENARIOS = {
         ),
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
+    "delayed_confirmation": {
+        "scenario_id":      "delayed_confirmation",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "HTTP_504_TIMEOUT",
+        "wire_event":       "HTTP 504 at t+30s, HTTP 200 arrived at t+65s (Post-Deadline)",
+        "sdk_claimed_state": "CONFIRMED",
+        "wire_status_code": 504,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
+    "duplicate_retry_same_payload": {
+        "scenario_id":      "duplicate_retry_same_payload",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "DUPLICATE_IN_FLIGHT",
+        "wire_event":       "HTTP 409 Conflict - duplicate retry while initial dispatch unconfirmed",
+        "sdk_claimed_state": "RETRY_DISPATCH",
+        "wire_status_code": WIRE_NO_RESPONSE,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
+    "payload_mutation_on_retry": {
+        "scenario_id":      "payload_mutation_on_retry",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 52,000 to [REDACTED_IBAN]",
+        "transport_fault":  "PAYLOAD_MUTATION",
+        "wire_event":       "HTTP 409 Conflict - payload hash mismatch under identical idempotency key",
+        "sdk_claimed_state": "CONFIRMED",
+        "wire_status_code": 409,
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
+    "malformed_response": {
+        "scenario_id":      "malformed_response",
+        "dispatched_by":    "Agent-LangChain-Treasury",
+        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":  "MALFORMED_JSON",
+        "wire_event":       "HTTP 200 OK with truncated payload and invalid JSON syntax",
+        "sdk_claimed_state": "CONFIRMED",
+        "wire_status_code": "MALFORMED_JSON",
+        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":    False,
+        "dora_article_17_support": (
+            "Supports DORA Article 17 incident classification by producing a "
+            "machine-readable timeline and wire-evidence bundle for risk team review"
+        ),
+        "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
+    },
 }
 
 # ─── Mermaid generation ───────────────────────────────────────────────────────
@@ -334,6 +404,10 @@ _WIRE_LINES = {
     "confirmed":   "    Gateway->>Agent: HTTP 200 OK (COMMITTED)",
     "refused":     "    Gateway--xAgent: HTTP 403 Forbidden (POLICY_GATE_REJECT)",
     "tcp_reset":   "    Gateway--xAgent: TCP RST mid-flight / Drop",
+    "delayed_confirmation": "    Gateway--xAgent: HTTP 504 (timeout at t+30s)\n    Gateway->>Agent: HTTP 200 at t+65s (Orphaned / Post-Deadline)",
+    "duplicate_retry_same_payload": "    Agent->>Gateway: POST /v1/settle (retry attempt #2)\n    Gateway--xAgent: HTTP 409 Conflict (Duplicate in-flight without idempotency lock)",
+    "payload_mutation_on_retry": "    Agent->>Gateway: POST /v1/settle (retry with altered payload under same key)\n    Gateway--xAgent: HTTP 409 Conflict (Payload hash mismatch on retry)",
+    "malformed_response": "    Gateway->>Agent: HTTP 200 OK (Malformed / Corrupted JSON payload)\n    Note over Agent: Schema validation failed",
 }
 
 

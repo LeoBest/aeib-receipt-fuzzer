@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# verify.sh — SMAOS Artifact Verification Script (v0.3.0)
-# Re-runs all 4 scenarios and asserts expected dispositions.
+# verify.sh — SMAOS Artifact Verification Script (v0.3.0 / v0.3.1)
+# Re-runs all 8 scenarios and asserts expected dispositions.
 # Usage: ./verify.sh
 # Exit code 0 = all PASS. Exit code 1 = one or more FAIL.
 
@@ -9,14 +9,33 @@ set -euo pipefail
 EXPORT_DIR="${EXPORT_DIR:-./audit_out_verify}"
 mkdir -p "$EXPORT_DIR"
 
-SCENARIOS=(504_timeout tcp_reset confirmed refused)
-EXPECTED=(dispatched_unconfirmed dispatched_unconfirmed CONFIRMED REFUSED)
+SCENARIOS=(
+  504_timeout
+  tcp_reset
+  confirmed
+  refused
+  delayed_confirmation
+  duplicate_retry_same_payload
+  payload_mutation_on_retry
+  malformed_response
+)
+
+EXPECTED=(
+  dispatched_unconfirmed
+  dispatched_unconfirmed
+  CONFIRMED
+  REFUSED
+  dispatched_unconfirmed
+  CONFLICT
+  CONFLICT
+  INVALID_INPUT
+)
 
 pass=0
 fail=0
 
 echo ""
-echo "🔒 SMAOS Verification Run"
+echo "🔒 SMAOS Verification Run (8 Scenarios)"
 echo "   Engine  : python3 run.py"
 echo "   Egress  : 127.0.0.1 loopback only"
 echo "   Out dir : $EXPORT_DIR"
@@ -49,8 +68,8 @@ done
 
 # PII scrubbing check on fault scenarios
 echo ""
-echo "🔍 PII Scrubbing Check (fault scenarios)"
-for s in 504_timeout tcp_reset; do
+echo "🔍 PII Scrubbing Check (across scenarios)"
+for s in "${SCENARIOS[@]}"; do
   report="$EXPORT_DIR/$s/disposition_report.json"
   if grep -qE '\bCZ[0-9]{2}[A-Z0-9]{16,}\b|\b[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b' "$report" 2>/dev/null; then
     echo "  ✗ $s  — FAIL (raw IBAN or PAN detected in output)"

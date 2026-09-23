@@ -38,6 +38,21 @@ scenario-refused:
 scenario-tcp-reset:
 	python3 run.py --scenario tcp_reset --export-dir ./audit_out/tcp_reset
 
+scenario-delayed:
+	python3 run.py --scenario delayed_confirmation --export-dir ./audit_out/delayed_confirmation
+
+scenario-duplicate:
+	python3 run.py --scenario duplicate_retry_same_payload --export-dir ./audit_out/duplicate_retry_same_payload
+
+scenario-mutation:
+	python3 run.py --scenario payload_mutation_on_retry --export-dir ./audit_out/payload_mutation_on_retry
+
+scenario-malformed:
+	python3 run.py --scenario malformed_response --export-dir ./audit_out/malformed_response
+
+verify:
+	./verify.sh
+
 clean:
 	rm -rf audit_out/
 	rm -rf .pytest_cache/

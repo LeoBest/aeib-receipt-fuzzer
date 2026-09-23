@@ -29,10 +29,14 @@ HOST = "127.0.0.1"
 PORT = 8766
 
 EXPECTED = {
-    "504_timeout": "dispatched_unconfirmed",
-    "tcp_reset":   "dispatched_unconfirmed",
-    "confirmed":   "CONFIRMED",
-    "refused":     "REFUSED",
+    "504_timeout":                  "dispatched_unconfirmed",
+    "tcp_reset":                    "dispatched_unconfirmed",
+    "confirmed":                    "CONFIRMED",
+    "refused":                      "REFUSED",
+    "delayed_confirmation":         "dispatched_unconfirmed",
+    "duplicate_retry_same_payload": "CONFLICT",
+    "payload_mutation_on_retry":    "CONFLICT",
+    "malformed_response":           "INVALID_INPUT",
 }
 
 

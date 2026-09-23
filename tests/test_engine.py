@@ -34,6 +34,10 @@ def test_trace_scrubber():
     ("confirmed", "CONFIRMED", False),
     ("refused", "REFUSED", False),
     ("tcp_reset", "dispatched_unconfirmed", False),
+    ("delayed_confirmation", "dispatched_unconfirmed", True),
+    ("duplicate_retry_same_payload", "CONFLICT", True),
+    ("payload_mutation_on_retry", "CONFLICT", True),
+    ("malformed_response", "INVALID_INPUT", True),
 ])
 def test_run_single_scenario_cli(tmp_path, scenario, exp_disp, exp_disc):
     cmd = [sys.executable, str(ROOT / "run.py"), "--scenario", scenario, "--export-dir", str(tmp_path)]

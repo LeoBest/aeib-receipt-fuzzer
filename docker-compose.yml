@@ -30,8 +30,8 @@ services:
     command: >
       sh -c "
         set -e &&
-        for s in 504_timeout tcp_reset confirmed refused; do
-          echo \"[+] Running scenario: $$s\" &&
+        for s in 504_timeout tcp_reset confirmed refused delayed_confirmation duplicate_retry_same_payload payload_mutation_on_retry malformed_response; do
+          echo "[+] Running scenario: $$s" &&
           python3 run.py --scenario $$s --export-dir /app/audit_out/$$s;
         done &&
         echo '' &&

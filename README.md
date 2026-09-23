@@ -3,6 +3,7 @@
 > **Sovereign Multi-Agent Operating System (SMAOS)**  
 > *Deterministic, Zero-Egress Wire-Truth Verification & Governance Substrate for Autonomous Agent Swarms.*
 
+[![CI](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![DEMM-Bench](https://img.shields.io/badge/DEMM--Bench-75%25_Overclaim_Rate-red.svg)](https://arxiv.org/abs/2606.20634)
 [![EU DORA](https://img.shields.io/badge/EU_DORA-RTS_2024%2F1772_Ready-orange.svg)](docs/DORA_ARTICLE_17_COMPLIANCE.md)
@@ -67,15 +68,19 @@ docker build -t smaos-demo:0.3.0 .
 docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.3.0
 ```
 
-#### Scenario Disposition Matrix
-| Scenario | Wire Event | Claimed SDK Status | SMAOS Disposition | Control Type |
-| :--- | :--- | :--- | :--- | :--- |
-| `504_timeout` | HTTP 504 Gateway Timeout | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection (Positive) |
-| `tcp_reset` | TCP RST mid-flight | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection (Positive) |
-| `confirmed` | HTTP 200 Settlement | `CONFIRMED` | **`CONFIRMED`** | Negative Control |
-| `refused` | HTTP 403 Gateway Refusal | `REFUSED` | **`REFUSED`** | Negative Control |
+#### Scenario Disposition Matrix (8 Conformance Vectors)
+| Scenario | Wire Event | Claimed SDK Status | SMAOS Disposition | Control Type | Failure Mode Addressed |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `504_timeout` | HTTP 504 Gateway Timeout | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Silent timeout drop & false success |
+| `tcp_reset` | TCP RST mid-flight | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Mid-stream connection severance |
+| `confirmed` | HTTP 200 Settlement | `CONFIRMED` | **`CONFIRMED`** | Negative Control | Clean settlement baseline |
+| `refused` | HTTP 403 Gateway Refusal | `REFUSED` | **`REFUSED`** | Negative Control | Downstream policy gate refusal |
+| `delayed_confirmation` | HTTP 200 arrived post-deadline (t+65s) | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Late-arriving orphan settlement |
+| `duplicate_retry_same_payload` | HTTP 409 duplicate retry in-flight | `RETRY_DISPATCH` | **`CONFLICT`** | Fault Injection | Unverified duplicate retry storm |
+| `payload_mutation_on_retry` | HTTP 409 payload hash mismatch | `CONFIRMED` | **`CONFLICT`** | Fault Injection | Mutation under reused idempotency key |
+| `malformed_response` | HTTP 200 with corrupted JSON | `CONFIRMED` | **`INVALID_INPUT`** | Fault Injection | Downstream schema contract violation |
 
-*The `confirmed` control is essential: it proves the engine accurately distinguishes verified settlement from false success.*
+*The `confirmed` and `refused` controls are essential: they prove the engine accurately distinguishes verified settlement from unconfirmed drops.*
 
 ---
 

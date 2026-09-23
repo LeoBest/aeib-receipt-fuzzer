@@ -23,5 +23,7 @@ jobs:
       run: make lint
     - name: Run tests
       run: make test
+    - name: Run artifact verification suite (8 scenarios)
+      run: make verify
     - name: Smoke test CLI
       run: python3 run.py --scenario 504_timeout --export-dir /tmp/audit

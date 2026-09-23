@@ -64,3 +64,18 @@ All payloads are scrubbed in memory before any file write. The scrubber redacts:
 - Email addresses → `[REDACTED_EMAIL]`
 
 No raw PII is written to disk or transmitted over any network interface.
+
+## Advanced Failure Modes (Tier-1 Scenarios)
+
+In addition to basic gateway timeouts and TCP connection aborts, SMAOS evaluates three critical distributed systems fault modes:
+
+### 1. Client-Side Deadline Enforcement (`delayed_confirmation`)
+In high-throughput financial architectures, confirmation packets that arrive after the client-side timeout has elapsed (e.g., HTTP 200 arriving at t+65s against a 30s deadline) cannot be retroactively trusted as synchronous success. Naive harnesses promote late receipts to `CONFIRMED`, blinding upstream orchestrators to race conditions and orphan mutations. SMAOS enforces `dispatched_unconfirmed` to isolate the unconfirmed execution.
+
+### 2. Idempotency & Mutation Guards (`duplicate_retry_same_payload` / `payload_mutation_on_retry`)
+When transport drops occur, agents frequently fire automated retries. SMAOS validates wire integrity against idempotency keys:
+- **Duplicate in-flight**: If an agent retries an identical mutation while the original request is unconfirmed downstream, SMAOS flags `CONFLICT` to halt duplicate clearing runs.
+- **Payload mutation on retry**: If an agent alters parameters (such as amount or account) while reusing an existing `idempotency_key` or `action_id`, SMAOS flags `CONFLICT` due to payload digest divergence.
+
+### 3. Response Contract Schema Gates (`malformed_response`)
+Downstream services returning HTTP 200 OK with truncated payloads, malformed JSON, or missing cryptographic signatures must never be assumed successful. SMAOS intercepts corrupt wire payloads and enforces `INVALID_INPUT` (precedence level 1), halting ungrounded state advancement.
