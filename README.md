@@ -82,15 +82,20 @@ docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.3.0
 
 *The `confirmed` and `refused` controls are essential: they prove the engine accurately distinguishes verified settlement from unconfirmed drops.*
 
+* Full control mappings: [`scenarios.md`](scenarios.md) (NIST AI RMF 1.0 & risk-prevention aliases).
+* Offline verification guide: [`VERIFY_OFFLINE.md`](VERIFY_OFFLINE.md) (Zero-egress verification via CLI, WASM, or browser).
+
 ---
 
 ## ⚠️ What This Solution Does & Does Not Claim
 
 ### What It Does:
 * Injects controlled wire faults on `127.0.0.1` to test harness uncertainty preservation.
-* Scrubs PII/PCI in-memory prior to local file writes.
-* Emits machine-readable DORA Art. 17 gap dossiers and ISO 42001 sequence traces.
+* Scrubs PII/PCI in-memory prior to local file writes (0 byte cloud egress).
+* Enforces EU AI Act Article 14 human oversight gates (`awaiting_human_validation`) across all receipts.
+* Emits executive `trust_passport.json` summaries, machine-readable DORA Art. 17 dossiers, and ISO 42001 sequence traces.
 * Delivers drop-in Java (`ProofOrStopFilter.java`) and Python (`@proof_or_stop`) remediation patches.
+* Ships an offline WebAssembly verifier (`smaos_verify.wasm`) and browser verifier (`verify_offline.html`) for air-gapped auditing.
 * Delivers a permanent, re-runnable local regression test suite for your engineering team.
 
 ### What It Does NOT Claim:

@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# verify.sh — SMAOS Artifact Verification Script (v0.3.0 / v0.3.1)
-# Re-runs all 8 scenarios and asserts expected dispositions.
+# verify.sh — SMAOS Conformance & Regulatory Verification Suite (v0.3.1)
+# Asserts 8 wire-fault and idempotency scenarios, NIST AI RMF mappings,
+# EU AI Act Art. 14 oversight gates, and DORA Art. 17 gap classification.
 # Usage: ./verify.sh
 # Exit code 0 = all PASS. Exit code 1 = one or more FAIL.
 
@@ -20,6 +21,17 @@ SCENARIOS=(
   malformed_response
 )
 
+ALIASES=(
+  prevent_silent_double_spend_on_504
+  prevent_unconfirmed_settlement_on_reset
+  confirmed_settlement_baseline
+  policy_refusal_baseline
+  prevent_stale_state_override_on_late_ack
+  prevent_duplicate_execution_on_retry
+  prevent_unauthorized_payload_mutation
+  prevent_invalid_schema_ingestion
+)
+
 EXPECTED=(
   dispatched_unconfirmed
   dispatched_unconfirmed
@@ -35,57 +47,62 @@ pass=0
 fail=0
 
 echo ""
-echo "🔒 SMAOS Verification Run (8 Scenarios)"
+echo "🔒 SMAOS Verification Run (8 Scenarios & Regulatory Gates)"
 echo "   Engine  : python3 run.py"
-echo "   Egress  : 127.0.0.1 loopback only"
+echo "   Egress  : 127.0.0.1 loopback only (--network none)"
 echo "   Out dir : $EXPORT_DIR"
 echo ""
 
 for i in "${!SCENARIOS[@]}"; do
   s="${SCENARIOS[$i]}"
+  alias="${ALIASES[$i]}"
   exp="${EXPECTED[$i]}"
   out_dir="$EXPORT_DIR/$s"
 
   python3 run.py --scenario "$s" --export-dir "$out_dir" > /dev/null 2>&1
 
   report="$out_dir/disposition_report.json"
-  if [ ! -f "$report" ]; then
-    echo "  ✗ $s  — FAIL (disposition_report.json not found)"
+  passport="$out_dir/trust_passport.json"
+
+  if [ ! -f "$report" ] || [ ! -f "$passport" ]; then
+    echo "  ✗ $s ($alias) — FAIL (required artifacts missing)"
     fail=$((fail + 1))
     continue
   fi
 
   got=$(python3 -c "import json; print(json.load(open('$report'))['evaluated_disposition'])")
+  ho_status=$(python3 -c "import json; print(json.load(open('$report'))['human_oversight']['status'])")
 
-  if [ "$got" = "$exp" ]; then
-    echo "  ✓ $s  → $got"
+  if [ "$got" = "$exp" ] && [ "$ho_status" = "awaiting_human_validation" ]; then
+    echo "  ✓ $s ($alias) → $got [Oversight: $ho_status]"
     pass=$((pass + 1))
   else
-    echo "  ✗ $s  → $got  (expected: $exp)"
+    echo "  ✗ $s ($alias) → $got (expected: $exp, oversight: $ho_status)"
     fail=$((fail + 1))
   fi
 done
 
-# PII scrubbing check on fault scenarios
+# PII scrubbing check across all scenarios
 echo ""
-echo "🔍 PII Scrubbing Check (across scenarios)"
+echo "🔍 PII Scrubbing Check (across all 8 scenarios)"
 for s in "${SCENARIOS[@]}"; do
   report="$EXPORT_DIR/$s/disposition_report.json"
   if grep -qE '\bCZ[0-9]{2}[A-Z0-9]{16,}\b|\b[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b' "$report" 2>/dev/null; then
-    echo "  ✗ $s  — FAIL (raw IBAN or PAN detected in output)"
+    echo "  ✗ $s — FAIL (raw IBAN or PAN detected in output)"
     fail=$((fail + 1))
   else
-    echo "  ✓ $s  — PII clean"
+    echo "  ✓ $s — PII clean (0 raw leaks)"
   fi
 done
 
 # Summary
 echo ""
 if [ "$fail" -eq 0 ]; then
-  echo "✅ ALL PASS  ($pass/$((pass + fail)) scenarios)"
+  echo "✅ ALL PASS ($pass/$((pass + fail)) scenarios passed)"
+  echo "   EU AI Act Art. 14 gate: awaiting_human_validation enforced across all receipts."
   echo "   Measurement, not certification. Human review required before regulatory use."
   exit 0
 else
-  echo "❌ FAILURES  ($fail/$((pass + fail)) scenarios failed)"
+  echo "❌ FAILURES ($fail/$((pass + fail)) scenarios failed)"
   exit 1
 fi

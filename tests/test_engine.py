@@ -78,6 +78,16 @@ def test_invalid_scenario():
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 2
 
+def test_scenario_alias_cli(tmp_path):
+    cmd = [sys.executable, str(ROOT / "run.py"), "--scenario", "prevent_silent_double_spend_on_504", "--export-dir", str(tmp_path)]
+    res = subprocess.run(cmd, capture_output=True, text=True)
+    assert res.returncode == 0
+    obj = json.loads(res.stdout)
+    assert obj["scenario_id"] == "504_timeout"
+    assert obj["scenario_alias"] == "prevent_silent_double_spend_on_504"
+    assert obj["human_oversight"]["status"] == "awaiting_human_validation"
+    assert (tmp_path / "trust_passport.json").exists()
+
 def test_ghost_audit_scanner():
     cmd = [sys.executable, str(ROOT / "ghost_audit_scanner.py")]
     res = subprocess.run(cmd, capture_output=True, text=True, cwd=str(ROOT))

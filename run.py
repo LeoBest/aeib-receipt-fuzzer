@@ -265,18 +265,33 @@ public class ProofOrStopFilter implements ExchangeFilterFunction {
 }
 """
 
+# ─── Risk-prevention aliases (aligned with NIST AI RMF 1.0) ────────────────────
+SCENARIO_ALIASES = {
+    "prevent_silent_double_spend_on_504":       "504_timeout",
+    "prevent_unconfirmed_settlement_on_reset":  "tcp_reset",
+    "prevent_stale_state_override_on_late_ack": "delayed_confirmation",
+    "prevent_duplicate_execution_on_retry":     "duplicate_retry_same_payload",
+    "prevent_unauthorized_payload_mutation":    "payload_mutation_on_retry",
+    "prevent_invalid_schema_ingestion":         "malformed_response",
+    "confirmed_settlement_baseline":            "confirmed",
+    "policy_refusal_baseline":                  "refused",
+}
+
 # ─── Default scenario definitions ────────────────────────────────────────────
 DEFAULT_SCENARIOS = {
     "504_timeout": {
-        "scenario_id":      "504_timeout",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "HTTP_504_TIMEOUT",
-        "wire_event":       "HTTP 504 Gateway Timeout, no confirmation",
-        "sdk_claimed_state": "CONFIRMED",
-        "wire_status_code": 504,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "504_timeout",
+        "alias":                "prevent_silent_double_spend_on_504",
+        "nist_control":         "MEASURE 2.1 (System reliability under transport fault)",
+        "risk_mitigation_goal": "Prevent silent double-spend when payment gateway drops transport on 504 timeout",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "HTTP_504_TIMEOUT",
+        "wire_event":           "HTTP 504 Gateway Timeout, no confirmation",
+        "sdk_claimed_state":    "CONFIRMED",
+        "wire_status_code":     504,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -284,15 +299,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "confirmed": {
-        "scenario_id":      "confirmed",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "NONE",
-        "wire_event":       "HTTP 200 from settlement endpoint",
-        "sdk_claimed_state": "CONFIRMED",
-        "wire_status_code": 200,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "confirmed",
+        "alias":                "confirmed_settlement_baseline",
+        "nist_control":         "GOVERN 1.2 (System integrity & expected operational baseline verification)",
+        "risk_mitigation_goal": "Ensure verified settlement receipts are cleanly certified without false downgrades",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "NONE",
+        "wire_event":           "HTTP 200 from settlement endpoint",
+        "sdk_claimed_state":    "CONFIRMED",
+        "wire_status_code":     200,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -300,15 +318,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "refused": {
-        "scenario_id":      "refused",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "HTTP_403_FORBIDDEN",
-        "wire_event":       "HTTP 403 from policy gateway",
-        "sdk_claimed_state": "REFUSED",
-        "wire_status_code": 403,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "refused",
+        "alias":                "policy_refusal_baseline",
+        "nist_control":         "MANAGE 1.3 (Policy gate enforcement & deterministic fail-closed mechanisms)",
+        "risk_mitigation_goal": "Verify downstream authorization rejections are preserved fail-closed",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "HTTP_403_FORBIDDEN",
+        "wire_event":           "HTTP 403 from policy gateway",
+        "sdk_claimed_state":    "REFUSED",
+        "wire_status_code":     403,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -316,15 +337,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "tcp_reset": {
-        "scenario_id":      "tcp_reset",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "TCP_RST",
-        "wire_event":       "TCP RST after partial write, no confirmation",
-        "sdk_claimed_state": "dispatched_unconfirmed",
-        "wire_status_code": WIRE_NO_RESPONSE,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "tcp_reset",
+        "alias":                "prevent_unconfirmed_settlement_on_reset",
+        "nist_control":         "MEASURE 2.7 (Handling sudden transport connection aborts without data loss)",
+        "risk_mitigation_goal": "Prevent unconfirmed settlement when TCP connection aborts mid-flight",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "TCP_RST",
+        "wire_event":           "TCP RST after partial write, no confirmation",
+        "sdk_claimed_state":    "dispatched_unconfirmed",
+        "wire_status_code":     WIRE_NO_RESPONSE,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -332,15 +356,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "delayed_confirmation": {
-        "scenario_id":      "delayed_confirmation",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "HTTP_504_TIMEOUT",
-        "wire_event":       "HTTP 504 at t+30s, HTTP 200 arrived at t+65s (Post-Deadline)",
-        "sdk_claimed_state": "CONFIRMED",
-        "wire_status_code": 504,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "delayed_confirmation",
+        "alias":                "prevent_stale_state_override_on_late_ack",
+        "nist_control":         "MEASURE 2.1 (Temporal integrity & deadline enforcement on asynchronous acknowledgments)",
+        "risk_mitigation_goal": "Prevent stale post-deadline confirmations from overriding client timeout states",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "HTTP_504_TIMEOUT",
+        "wire_event":           "HTTP 504 at t+30s, HTTP 200 arrived at t+65s (Post-Deadline)",
+        "sdk_claimed_state":    "CONFIRMED",
+        "wire_status_code":     504,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -348,15 +375,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "duplicate_retry_same_payload": {
-        "scenario_id":      "duplicate_retry_same_payload",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "DUPLICATE_IN_FLIGHT",
-        "wire_event":       "HTTP 409 Conflict - duplicate retry while initial dispatch unconfirmed",
-        "sdk_claimed_state": "RETRY_DISPATCH",
-        "wire_status_code": WIRE_NO_RESPONSE,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "duplicate_retry_same_payload",
+        "alias":                "prevent_duplicate_execution_on_retry",
+        "nist_control":         "MANAGE 1.3 (Idempotency enforcement against duplicate retry storms)",
+        "risk_mitigation_goal": "Halt duplicate clearing runs when retry is dispatched without verified status",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "DUPLICATE_IN_FLIGHT",
+        "wire_event":           "HTTP 409 Conflict - duplicate retry while initial dispatch unconfirmed",
+        "sdk_claimed_state":    "RETRY_DISPATCH",
+        "wire_status_code":     WIRE_NO_RESPONSE,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -364,15 +394,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "payload_mutation_on_retry": {
-        "scenario_id":      "payload_mutation_on_retry",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 52,000 to [REDACTED_IBAN]",
-        "transport_fault":  "PAYLOAD_MUTATION",
-        "wire_event":       "HTTP 409 Conflict - payload hash mismatch under identical idempotency key",
-        "sdk_claimed_state": "CONFIRMED",
-        "wire_status_code": 409,
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "payload_mutation_on_retry",
+        "alias":                "prevent_unauthorized_payload_mutation",
+        "nist_control":         "MAP 1.5 (Payload mutation detection under identical idempotency keys)",
+        "risk_mitigation_goal": "Detect and block mutated payloads attempting to reuse existing transaction idempotency keys",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 52,000 to [REDACTED_IBAN]",
+        "transport_fault":      "PAYLOAD_MUTATION",
+        "wire_event":           "HTTP 409 Conflict - payload hash mismatch under identical idempotency key",
+        "sdk_claimed_state":    "CONFIRMED",
+        "wire_status_code":     409,
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -380,15 +413,18 @@ DEFAULT_SCENARIOS = {
         "pci_dss_sanitization": "ACTIVE_ZERO_EGRESS",
     },
     "malformed_response": {
-        "scenario_id":      "malformed_response",
-        "dispatched_by":    "Agent-LangChain-Treasury",
-        "payload_summary":  "EUR 50,000 to [REDACTED_IBAN]",
-        "transport_fault":  "MALFORMED_JSON",
-        "wire_event":       "HTTP 200 OK with truncated payload and invalid JSON syntax",
-        "sdk_claimed_state": "CONFIRMED",
-        "wire_status_code": "MALFORMED_JSON",
-        "audit_stream":     "INDEPENDENT_EVIDENCE_BUNDLE",
-        "log_tampering":    False,
+        "scenario_id":          "malformed_response",
+        "alias":                "prevent_invalid_schema_ingestion",
+        "nist_control":         "MEASURE 2.6 (Input/output schema contract validation & schema tamper resistance)",
+        "risk_mitigation_goal": "Reject corrupted or non-conforming downstream responses from promoting state",
+        "dispatched_by":        "Agent-LangChain-Treasury",
+        "payload_summary":      "EUR 50,000 to [REDACTED_IBAN]",
+        "transport_fault":      "MALFORMED_JSON",
+        "wire_event":           "HTTP 200 OK with truncated payload and invalid JSON syntax",
+        "sdk_claimed_state":    "CONFIRMED",
+        "wire_status_code":     "MALFORMED_JSON",
+        "audit_stream":         "INDEPENDENT_EVIDENCE_BUNDLE",
+        "log_tampering":        False,
         "dora_article_17_support": (
             "Supports DORA Article 17 incident classification by producing a "
             "machine-readable timeline and wire-evidence bundle for risk team review"
@@ -440,20 +476,24 @@ def generate_scenario_mermaid(scenario_id: str, record: dict) -> str:
 def run_single_scenario(scenario_id: str, export_dir: Path, decision_repro: bool = False, pqc_sign: bool = False) -> None:
     """
     Load scenario metadata from fixture (if present), derive disposition via
-    evaluate_disposition(), print JSON to stdout, write all 4 artifact files.
+    evaluate_disposition(), print JSON to stdout, write all 5 artifact files.
     The disposition is ALWAYS computed — never trusted from fixture data.
     """
     export_dir.mkdir(parents=True, exist_ok=True)
 
-    # 1. Start from the canonical defaults
-    meta = dict(DEFAULT_SCENARIOS.get(scenario_id, {}))
+    # 1. Resolve alias if provided
+    canonical_id = SCENARIO_ALIASES.get(scenario_id, scenario_id)
+    meta = dict(DEFAULT_SCENARIOS.get(canonical_id, {}))
     if not meta:
+        valid_choices = list(DEFAULT_SCENARIOS) + list(SCENARIO_ALIASES)
         print(
             f"[!] Unknown scenario '{scenario_id}'. "
-            f"Valid choices: {list(DEFAULT_SCENARIOS)}",
+            f"Valid choices: {valid_choices}",
             file=sys.stderr,
         )
         sys.exit(1)
+
+    scenario_id = canonical_id
 
     # 2. Overlay fixture metadata (never override computed disposition fields)
     root_dir = Path(__file__).resolve().parent
@@ -501,6 +541,8 @@ def run_single_scenario(scenario_id: str, export_dir: Path, decision_repro: bool
         "version": "v0.2.0-aat-pqc",
         "timestamp_utc": "2026-09-22T17:24:01Z",
         "scenario_id":           meta["scenario_id"],
+        "scenario_alias":        meta.get("alias", meta["scenario_id"]),
+        "nist_ai_rmf_control":   meta.get("nist_control", "MEASURE 2.1"),
         "dispatched_by":         meta.get("dispatched_by", "Agent-LangChain-Treasury"),
         "payload_summary":       meta.get("payload_summary", "EUR 50,000 to [REDACTED_IBAN]"),
         "transport_fault":       meta.get("transport_fault", "NONE"),
@@ -515,6 +557,7 @@ def run_single_scenario(scenario_id: str, export_dir: Path, decision_repro: bool
         "pci_dss_sanitization":  meta.get("pci_dss_sanitization", "ACTIVE_ZERO_EGRESS"),
         "human_oversight": {
             "reviewed": False,
+            "status": "awaiting_human_validation",
             "required_by": "EU AI Act Art. 14"
         }
     }
@@ -596,6 +639,39 @@ def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
 
     # ProofOrStopFilter.java
     (export_dir / "ProofOrStopFilter.java").write_text(JAVA_REMEDIATION_FILTER)
+
+    # trust_passport.json (Executive audit summary artifact)
+    trust_passport = {
+        "passport_id": f"urn:uuid:passport-{scenario_id}-2026",
+        "generated_at_utc": record["timestamp_utc"],
+        "target_harness": record["dispatched_by"],
+        "engine_version": "v0.3.1-wire-truth",
+        "governance_standards": [
+            "EU AI Act Article 14 (Human Oversight - Status: awaiting_human_validation)",
+            "EU AI Act Article 12 (Automatic Logging of Mutating Transactions)",
+            "EBA DORA RTS 2024/1772 Article 17 (Major ICT Incident Classification)",
+            "NIST AI RMF 1.0 (MEASURE 2.1, MANAGE 1.3, MAP 1.5, GOVERN 1.2)"
+        ],
+        "scenario_id": record["scenario_id"],
+        "scenario_alias": record.get("scenario_alias", record["scenario_id"]),
+        "nist_control": record.get("nist_ai_rmf_control", "MEASURE 2.1"),
+        "evaluated_disposition": record["evaluated_disposition"],
+        "discrepancy_detected": record["discrepancy_detected"],
+        "human_oversight": record["human_oversight"],
+        "dora_rts_classification": (
+            "4h_major_incident" if record["discrepancy_detected"] else "nominal_compliant"
+        ),
+        "remediation_status": {
+            "remediation_available": True,
+            "filter_class": "ProofOrStopFilter.java",
+            "remediation_invariant": "Evidence Absent => UNKNOWN / dispatched_unconfirmed"
+        },
+        "offline_verifier": "smaos_verify.wasm",
+        "certification_disclaimer": "Technical evidence measurement, not statutory certification. Human risk review required."
+    }
+    (export_dir / "trust_passport.json").write_text(
+        json.dumps(trust_passport, indent=2) + "\n"
+    )
 
 
 # ─── Multi-scenario interactive mode ─────────────────────────────────────────
@@ -684,11 +760,12 @@ def emit_artifacts(output_dir: Path, results: list) -> list:
 
 def main():
     parser = argparse.ArgumentParser(description="AEIB Settlement Fuzzer & Wire Truth Engine")
+    valid_scenario_choices = list(DEFAULT_SCENARIOS) + list(SCENARIO_ALIASES)
     parser.add_argument(
         "--scenario",
-        choices=list(DEFAULT_SCENARIOS),
+        choices=valid_scenario_choices,
         default=None,
-        help="Run a discrete conformance scenario and exit",
+        help="Run a discrete conformance scenario or risk alias and exit",
     )
     parser.add_argument(
         "--export-dir",
