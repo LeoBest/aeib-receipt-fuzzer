@@ -114,6 +114,22 @@ docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.3.0
 
 ---
 
+## 🔬 What Others Test vs. What SMAOS Tests
+
+| What standard observability tools test | What SMAOS tests |
+|:---------------------------------------|:-----------------|
+| What the agent/SDK **reports** happened | What the **wire transport** actually delivered |
+| Whether a tool call was made | Whether the call's outcome was confirmed by the socket |
+| Records the SDK's `CONFIRMED` log faithfully | Tests whether `CONFIRMED` is justified by wire evidence |
+| Model reasoning and task output | System behavior at the transport boundary |
+
+SMAOS does not measure model intelligence, prompt safety, or general agent capability.  
+It measures one thing: **does the harness preserve uncertainty when the wire does not confirm completion?**
+
+See [`scenarios.md`](scenarios.md), [`METHODOLOGY.md`](METHODOLOGY.md), and [`LIMITATIONS.md`](LIMITATIONS.md) for the full scope.
+
+---
+
 ## 🚀 Roadmap: v0.4.0 (In Progress)
 
 The following capabilities are under active development and are **not yet shipped**:
