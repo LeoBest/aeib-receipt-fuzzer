@@ -559,7 +559,21 @@ def run_single_scenario(scenario_id: str, export_dir: Path, decision_repro: bool
             "reviewed": False,
             "status": "awaiting_human_validation",
             "required_by": "EU AI Act Art. 14"
-        }
+        },
+        "rejected_paths": [
+            {
+                "option": "ASSUME_SUCCESS",
+                "reason": "evidence_absent_confirmed_forbidden",
+                "score": 0.0,
+                "rejected_at": "2026-09-22T17:24:01Z"
+            },
+            {
+                "option": "RETRY_IMMEDIATE",
+                "reason": "no_confirmation_within_deadline_hazard",
+                "score": 0.12,
+                "rejected_at": "2026-09-22T17:24:01Z"
+            }
+        ] if evaluated_disposition == "dispatched_unconfirmed" else []
     }
 
     if decision_repro:
@@ -672,6 +686,23 @@ def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
     (export_dir / "trust_passport.json").write_text(
         json.dumps(trust_passport, indent=2) + "\n"
     )
+
+    md_content = f"""# Trust Passport (SMAOS Audit)
+- **Audit ID:** {trust_passport['passport_id']}
+- **Scenario:** {trust_passport['scenario_id']} ({trust_passport['scenario_alias']})
+- **Engine Version:** {trust_passport['engine_version']}
+
+## Evidence Integrity
+- **NIST AI RMF 1.0 Control:** {trust_passport['nist_control']}
+- **EU AI Act Art. 14 Oversight:** {trust_passport['human_oversight']['status']}
+- **DORA Classification:** {trust_passport['dora_rts_classification']}
+
+## Limitations
+- Covers wire-fault effect integrity only.
+- Does not measure model quality or content safety.
+- Not a compliance certification.
+"""
+    (export_dir / "trust_passport.md").write_text(md_content)
 
 
 # ─── Multi-scenario interactive mode ─────────────────────────────────────────
