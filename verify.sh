@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# verify.sh — SMAOS Conformance & Regulatory Verification Suite (v0.3.1)
+# verify.sh — SMAOS Conformance & Regulatory Verification Suite (v0.4.0)
 # Asserts 8 wire-fault and idempotency scenarios, NIST AI RMF mappings,
 # EU AI Act Art. 14 oversight gates, and DORA Art. 17 gap classification.
 # Usage: ./verify.sh

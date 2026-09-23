@@ -2,7 +2,7 @@
 # Copyright 2026 SovereignNexus
 # Apache License 2.0
 """
-scorecard_server.py — Zero-dependency live scorecard API (v0.3.0)
+scorecard_server.py — Zero-dependency live scorecard API (v0.4.0)
 
 Reads disposition_report.json from ./audit_out/<scenario_id>/ and exposes
 a structured JSON scorecard at GET /api/scorecard on 127.0.0.1:8766.
@@ -97,7 +97,7 @@ def build_scorecard() -> dict:
     ]
 
     card = {
-        "version": "v0.3.1",
+        "version": "v0.4.0",
         "governance_alignment": [
             "EU AI Act Art. 14 (Status: awaiting_human_validation)",
             "EU DORA RTS 2024/1772 Art. 17 (Incident Classification)",
@@ -128,7 +128,7 @@ def build_scorecard() -> dict:
     if AUDIT_DIR.exists():
         top_passport = {
             "passport_id": "urn:uuid:passport-suite-summary-2026",
-            "benchmark_version": "v0.3.1-wire-truth",
+            "benchmark_version": "v0.4.0-wire-truth",
             "scenarios_evaluated": total,
             "scenarios_passed": passed,
             "overclaim_rate": f"{(total - passed) / max(total, 1) * 100:.1f}%",

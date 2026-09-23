@@ -1,4 +1,4 @@
-# SMAOS Scenarios & NIST AI RMF 1.0 Conformance Matrix (v0.3.1)
+# SMAOS Scenarios & NIST AI RMF 1.0 Conformance Matrix (v0.4.0)
 
 This document defines the eight wire-fault and idempotency conformance scenarios shipped with SMAOS.
 They are the canonical benchmark inputs for `verify.sh`, `docker compose up`, and the `GET /api/scorecard` endpoint.

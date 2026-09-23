@@ -645,7 +645,7 @@ def _write_artifacts(scenario_id: str, record: dict, export_dir: Path) -> None:
         "passport_id": f"urn:uuid:passport-{scenario_id}-2026",
         "generated_at_utc": record["timestamp_utc"],
         "target_harness": record["dispatched_by"],
-        "engine_version": "v0.3.1-wire-truth",
+        "engine_version": "v0.4.0-wire-truth",
         "governance_standards": [
             "EU AI Act Article 14 (Human Oversight - Status: awaiting_human_validation)",
             "EU AI Act Article 12 (Automatic Logging of Mutating Transactions)",

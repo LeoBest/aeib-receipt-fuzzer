@@ -1,9 +1,9 @@
-# docker-compose.yml — SMAOS Zero-Egress Demo (v0.3.0)
-# Runs all 4 fault scenarios locally under --network none.
+# docker-compose.yml — SMAOS Zero-Egress Demo (v0.4.0)
+# Runs all 8 fault & conformance scenarios locally under --network none.
 # No external registry pull required — builds from source.
 #
 # Usage:
-#   docker compose up --build          # run all 4 scenarios
+#   docker compose up --build          # run all 8 scenarios
 #   docker compose up --build -d       # detached
 #
 # Output:
@@ -19,7 +19,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    image: smaos-demo:0.3.0
+    image: smaos-demo:0.4.0
     container_name: smaos-demo
     network_mode: "none"
     volumes:

@@ -1,4 +1,4 @@
-# SMAOS Limitations (v0.3.0)
+# SMAOS Limitations (v0.4.0)
 
 This document states what SMAOS does not measure, does not claim, and does not
 provide. Read this before citing SMAOS results in regulatory submissions.

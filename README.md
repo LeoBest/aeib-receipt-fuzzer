@@ -64,26 +64,33 @@ git clone https://github.com/LeoBest/aeib-receipt-fuzzer
 cd aeib-receipt-fuzzer
 python3 run.py --scenario 504_timeout --export-dir ./audit_out
 # Optional: build and run local container (builds from source, no Docker Hub pull)
-docker build -t smaos-demo:0.3.0 .
-docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.3.0
+docker build -t smaos-demo:0.4.0 .
+docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.4.0
 ```
 
-#### Scenario Disposition Matrix (8 Conformance Vectors)
-| Scenario | Wire Event | Claimed SDK Status | SMAOS Disposition | Control Type | Failure Mode Addressed |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| `504_timeout` | HTTP 504 Gateway Timeout | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Silent timeout drop & false success |
-| `tcp_reset` | TCP RST mid-flight | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Mid-stream connection severance |
-| `confirmed` | HTTP 200 Settlement | `CONFIRMED` | **`CONFIRMED`** | Negative Control | Clean settlement baseline |
-| `refused` | HTTP 403 Gateway Refusal | `REFUSED` | **`REFUSED`** | Negative Control | Downstream policy gate refusal |
-| `delayed_confirmation` | HTTP 200 arrived post-deadline (t+65s) | `CONFIRMED` | **`dispatched_unconfirmed`** | Fault Injection | Late-arriving orphan settlement |
-| `duplicate_retry_same_payload` | HTTP 409 duplicate retry in-flight | `RETRY_DISPATCH` | **`CONFLICT`** | Fault Injection | Unverified duplicate retry storm |
-| `payload_mutation_on_retry` | HTTP 409 payload hash mismatch | `CONFIRMED` | **`CONFLICT`** | Fault Injection | Mutation under reused idempotency key |
-| `malformed_response` | HTTP 200 with corrupted JSON | `CONFIRMED` | **`INVALID_INPUT`** | Fault Injection | Downstream schema contract violation |
+#### Scenario Disposition & NIST AI RMF 1.0 Conformance Matrix (8 Vectors)
+| Canonical ID | Risk-Prevention UX Alias | NIST AI RMF | Wire Event | SDK Claim | SMAOS Disposition | Risk Mitigated |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| `504_timeout` | **`prevent_silent_double_spend_on_504`** | **MEASURE 2.1** | HTTP 504 Gateway Timeout | `CONFIRMED` | **`dispatched_unconfirmed`** | Silent timeout drop & double spend |
+| `tcp_reset` | **`prevent_unconfirmed_settlement_on_reset`** | **MEASURE 2.7** | TCP RST mid-transmission | `CONFIRMED` | **`dispatched_unconfirmed`** | Mid-stream connection severance |
+| `confirmed` | **`confirmed_settlement_baseline`** | **GOVERN 1.2** | HTTP 200 Settlement | `CONFIRMED` | **`CONFIRMED`** | Clean settlement baseline (Negative Control) |
+| `refused` | **`policy_refusal_baseline`** | **MANAGE 1.3** | HTTP 403 Gateway Refusal | `REFUSED` | **`REFUSED`** | Downstream policy refusal (Negative Control) |
+| `delayed_confirmation` | **`prevent_stale_state_override_on_late_ack`** | **MEASURE 2.1** | HTTP 200 arrived post-deadline (t+65s) | `CONFIRMED` | **`dispatched_unconfirmed`** | Late-arriving orphan settlement |
+| `duplicate_retry_same_payload` | **`prevent_duplicate_execution_on_retry`** | **MANAGE 1.3** | HTTP 409 duplicate retry in-flight | `RETRY_DISPATCH` | **`CONFLICT`** | Unverified duplicate retry storm |
+| `payload_mutation_on_retry` | **`prevent_unauthorized_payload_mutation`** | **MAP 1.5** | HTTP 409 payload hash mismatch | `CONFIRMED` | **`CONFLICT`** | Mutation under reused idempotency key |
+| `malformed_response` | **`prevent_invalid_schema_ingestion`** | **MEASURE 2.6** | HTTP 200 with corrupted JSON | `CONFIRMED` | **`INVALID_INPUT`** | Downstream schema contract violation |
 
 *The `confirmed` and `refused` controls are essential: they prove the engine accurately distinguishes verified settlement from unconfirmed drops.*
 
-* Full control mappings: [`scenarios.md`](scenarios.md) (NIST AI RMF 1.0 & risk-prevention aliases).
-* Offline verification guide: [`VERIFY_OFFLINE.md`](VERIFY_OFFLINE.md) (Zero-egress verification via CLI, WASM, or browser).
+* **CLI Execution**: Run any scenario by canonical ID or alias: `python3 run.py --scenario prevent_silent_double_spend_on_504 --export-dir ./audit_out`
+* **NIST & Risk Matrix**: [`scenarios.md`](scenarios.md) (Full control mappings, failure modes, and scoring rubrics).
+* **Offline Verification Guide**: [`VERIFY_OFFLINE.md`](VERIFY_OFFLINE.md) (Step-by-step air-gap auditing via browser, WASM, or CLI).
+
+### 🔐 Air-Gapped & Offline Verification (Browser & WebAssembly)
+
+For air-gapped auditor reviews and zero-egress compliance inspections:
+* **Drag-and-Drop Browser Verifier (`smaos_verify/verify_offline.html`)**: Open directly via `file://` in Chrome, Firefox, or Safari. Drag and drop any `disposition_report.json` onto the window to instantly recompute the RFC 8785 (JCS) canonical SHA-256 digest via native Web Crypto, check Ed25519 signature fields, and verify EU AI Act Article 14 human oversight status. **0 external network requests, 0 dependencies, runs 100% client-side.**
+* **Pure Rust WebAssembly Binary (`smaos_verify/smaos_verify.wasm`)**: 167 KB standalone WASM binary compiled for zero-trust pipelines and sandboxed enclaves.
 
 ---
 
@@ -140,13 +147,13 @@ See [`scenarios.md`](scenarios.md), [`METHODOLOGY.md`](METHODOLOGY.md), and [`LI
 
 ---
 
-## 🚀 Roadmap: v0.4.0 (In Progress)
+## 🚀 Roadmap: Beyond v0.4.0
 
-The following capabilities are under active development and are **not yet shipped**:
+The following capabilities are under active development and scheduled for subsequent releases:
 
-* **Offline WASM Verifier (`smaos_verify.wasm`)**: Standalone pure Rust WebAssembly binary for offline Ed25519 signature verification in air-gapped browsers.
 * **IETF AAT Draft-04 Digests**: Binding 5 decision-reproducibility digests (`model_weights`, `tokenizer`, `chat_template`, `engine_build`, `numeric_environment`) into every receipt.
 * **Post-Quantum Cryptography**: ML-DSA-65 (FIPS 204) dual-signing capability.
+* **Continuous eBPF Kernel Probes**: Non-invasive kernel-level socket capture for high-throughput production clusters (Door 2).
 
 ---
 
@@ -163,4 +170,4 @@ The following capabilities are under active development and are **not yet shippe
 * **Inquiries & SOW**: Contact `andrejlo123@gmail.com` | **SovereignNexus s.r.o.**, Prague, Czech Republic.
 
 ---
-*One command. Four scenarios. Zero egress. The truth is on the wire.*
+*One command. Eight scenarios. Zero egress. The truth is on the wire.*

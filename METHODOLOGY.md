@@ -1,4 +1,4 @@
-# SMAOS Methodology (v0.3.0)
+# SMAOS Methodology (v0.4.0)
 
 ## What Is Tested
 
@@ -16,7 +16,7 @@ Each scenario specifies:
 - The **SDK-claimed state** the agent harness would log without intervention
 - The **expected disposition** the SMAOS engine must record
 
-The four baseline scenarios are defined in `scenarios.md`.
+The eight Tier-1 wire-fault and idempotency scenarios are defined in `scenarios.md`.
 
 ## How the Engine Runs
 
