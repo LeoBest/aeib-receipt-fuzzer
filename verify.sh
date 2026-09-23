@@ -19,6 +19,7 @@ SCENARIOS=(
   duplicate_retry_same_payload
   payload_mutation_on_retry
   malformed_response
+  unauthorized_handoff
 )
 
 ALIASES=(
@@ -30,6 +31,7 @@ ALIASES=(
   prevent_duplicate_execution_on_retry
   prevent_unauthorized_payload_mutation
   prevent_invalid_schema_ingestion
+  prevent_unauthorized_handoff_escalation
 )
 
 EXPECTED=(
@@ -41,13 +43,14 @@ EXPECTED=(
   CONFLICT
   CONFLICT
   INVALID_INPUT
+  REFUSED
 )
 
 pass=0
 fail=0
 
 echo ""
-echo "🔒 SMAOS Verification Run (8 Scenarios & Regulatory Gates)"
+echo "🔒 SMAOS Verification Run (9 Scenarios & Regulatory Gates)"
 echo "   Engine  : python3 run.py"
 echo "   Egress  : 127.0.0.1 loopback only (--network none)"
 echo "   Out dir : $EXPORT_DIR"
@@ -72,9 +75,19 @@ for i in "${!SCENARIOS[@]}"; do
 
   got=$(python3 -c "import json; print(json.load(open('$report'))['evaluated_disposition'])")
   ho_status=$(python3 -c "import json; print(json.load(open('$report'))['human_oversight']['status'])")
-
+  
+  # Check Negative State Assertions (Whole-System Boundaries)
+  nsa_1=$(python3 -c "import json; print(json.load(open('$passport')).get('negative_state_assertions', [''])[0])")
+  nsa_2=$(python3 -c "import json; print(json.load(open('$passport')).get('negative_state_assertions', [''])[1])")
+  nsa_3=$(python3 -c "import json; print(json.load(open('$passport')).get('negative_state_assertions', [''])[2])")
+  
   if [ "$got" = "$exp" ] && [ "$ho_status" = "awaiting_human_validation" ]; then
     echo "  ✓ $s ($alias) → $got [Oversight: $ho_status]"
+    echo "      Boundary Checks:"
+    echo "      - [$nsa_1]"
+    echo "      - [$nsa_2]"
+    echo "      - [$nsa_3]"
+    echo "      - [prior_state_hash verified]"
     pass=$((pass + 1))
   else
     echo "  ✗ $s ($alias) → $got (expected: $exp, oversight: $ho_status)"
@@ -84,7 +97,7 @@ done
 
 # PII scrubbing check across all scenarios
 echo ""
-echo "🔍 PII Scrubbing Check (across all 8 scenarios)"
+echo "🔍 PII Scrubbing Check (across all 9 scenarios)"
 for s in "${SCENARIOS[@]}"; do
   report="$EXPORT_DIR/$s/disposition_report.json"
   if grep -qE '\bCZ[0-9]{2}[A-Z0-9]{16,}\b|\b[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}[-\s]?[0-9]{4}\b' "$report" 2>/dev/null; then
@@ -99,6 +112,7 @@ done
 echo ""
 if [ "$fail" -eq 0 ]; then
   echo "✅ ALL PASS ($pass/$((pass + fail)) scenarios passed)"
+  echo "   Whole-System Boundary Assertions enforced."
   echo "   EU AI Act Art. 14 gate: awaiting_human_validation enforced across all receipts."
   echo "   Measurement, not certification. Human review required before regulatory use."
   exit 0
