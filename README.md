@@ -2,13 +2,17 @@
 
 > **Sovereign Multi-Agent Operating System (SMAOS)**  
 > *Deterministic, Zero-Egress Wire-Truth Verification & Governance Substrate for Autonomous Agent Swarms.*
+> 
+> **Bring Your Own Harness (BYOH):** Works with your existing harness. No new SDKs. We observe the wire.
 
 [![CI](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LeoBest/aeib-receipt-fuzzer/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LeoBest/aeib-receipt-fuzzer)
+[![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev/)
+[![Zero Egress](https://img.shields.io/badge/Egress-0_Bytes_(127.0.0.1)-brightgreen.svg)](#zero-egress-guarantee)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
 [![DEMM-Bench](https://img.shields.io/badge/DEMM--Bench-75%25_Overclaim_Rate-red.svg)](https://arxiv.org/abs/2606.20634)
 [![EU DORA](https://img.shields.io/badge/EU_DORA-RTS_2024%2F1772_Ready-orange.svg)](docs/DORA_ARTICLE_17_COMPLIANCE.md)
 [![IETF](https://img.shields.io/badge/IETF-AAT_draft--04-green.svg)](docs/CRYPTOGRAPHY.md)
-[![Egress](https://img.shields.io/badge/Egress-0_Bytes_(127.0.0.1)-brightgreen.svg)](#zero-egress-guarantee)
 
 ---
 
@@ -68,7 +72,7 @@ docker build -t smaos-demo:0.4.0 .
 docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.4.0
 ```
 
-#### Scenario Disposition & NIST AI RMF 1.0 Conformance Matrix (8 Vectors)
+#### Scenario Disposition & NIST AI RMF 1.0 Conformance Matrix (9 Vectors)
 | Canonical ID | Risk-Prevention UX Alias | NIST AI RMF | Wire Event | SDK Claim | SMAOS Disposition | Risk Mitigated |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | `504_timeout` | **`prevent_silent_double_spend_on_504`** | **MEASURE 2.1** | HTTP 504 Gateway Timeout | `CONFIRMED` | **`dispatched_unconfirmed`** | Silent timeout drop & double spend |
@@ -79,6 +83,7 @@ docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.4.0
 | `duplicate_retry_same_payload` | **`prevent_duplicate_execution_on_retry`** | **MANAGE 1.3** | HTTP 409 duplicate retry in-flight | `RETRY_DISPATCH` | **`CONFLICT`** | Unverified duplicate retry storm |
 | `payload_mutation_on_retry` | **`prevent_unauthorized_payload_mutation`** | **MAP 1.5** | HTTP 409 payload hash mismatch | `CONFIRMED` | **`CONFLICT`** | Mutation under reused idempotency key |
 | `malformed_response` | **`prevent_invalid_schema_ingestion`** | **MEASURE 2.6** | HTTP 200 with corrupted JSON | `CONFIRMED` | **`INVALID_INPUT`** | Downstream schema contract violation |
+| `unauthorized_handoff` | **`prevent_unauthorized_handoff_escalation`** | **GOVERN 1.2** | HTTP 403 Forbidden - Delegation Ceiling Exceeded | `REFUSED` | **`REFUSED`** | Unauthorized capability escalation |
 
 *The `confirmed` and `refused` controls are essential: they prove the engine accurately distinguishes verified settlement from unconfirmed drops.*
 
