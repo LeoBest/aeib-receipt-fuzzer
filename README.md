@@ -5,8 +5,8 @@
 > 
 > **Bring Your Own Harness (BYOH):** Works with your existing harness. No new SDKs. We observe the wire.
 
-[![CI](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoBest/aeib-receipt-fuzzer/actions/workflows/ci.yml)
-[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/LeoBest/aeib-receipt-fuzzer/badge)](https://securityscorecards.dev/viewer/?uri=github.com/LeoBest/aeib-receipt-fuzzer)
+[![CI](https://github.com/smaos-ai/aeib-receipt-fuzzer/actions/workflows/ci.yml/badge.svg)](https://github.com/smaos-ai/aeib-receipt-fuzzer/actions/workflows/ci.yml)
+[![OpenSSF Scorecard](https://api.securityscorecards.dev/projects/github.com/smaos-ai/aeib-receipt-fuzzer/badge)](https://securityscorecards.dev/viewer/?uri=github.com/smaos-ai/aeib-receipt-fuzzer)
 [![SLSA 3](https://slsa.dev/images/gh-badge-level3.svg)](https://slsa.dev/)
 [![Zero Egress](https://img.shields.io/badge/Egress-0_Bytes_(127.0.0.1)-brightgreen.svg)](#zero-egress-guarantee)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
@@ -36,7 +36,7 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 * **The Ground Truth**: **DEMM-Bench (arXiv:2606.20634)** proves that across 64 cases and eight evidence regimes, "full traces" and "schema validation" overclaim on **75% of dropped wire cases** (*The Container Fallacy*). The records look complete, but cannot prove what actually occurred on the wire.
 * **Our Verifiable Proof**: `aeib-receipt-fuzzer` simulates local wire faults (`504_timeout`, `tcp_reset`). While standard agent SDKs swallow exceptions, SMAOS intercepts the wire state, redacts PII in-memory, and records the discrepancy as **`dispatched_unconfirmed`**.
 * **The Drop-In Patch**: You receive a 15-line Java filter (`ProofOrStopFilter.java`) to immediately patch Spring Boot backends and fail closed.
-* **Explore**: [LeoBest/aeib-receipt-fuzzer](https://github.com/LeoBest/aeib-receipt-fuzzer) · [fixtures/504_timeout.json](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/fixtures/504_timeout.json)
+* **Explore**: [smaos-ai/aeib-receipt-fuzzer](https://github.com/smaos-ai/aeib-receipt-fuzzer) · [fixtures/504_timeout.json](https://github.com/smaos-ai/aeib-receipt-fuzzer/blob/main/fixtures/504_timeout.json)
 
 ---
 
@@ -45,7 +45,7 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 * **The Ground Truth**: Standard observability tools (LangSmith, Datadog LLM Observability, Braintrust) record what the agent harness reports. They answer "what did the SDK log?"—not "was uncertainty preserved on wire fault?"
 * **Our Verifiable Proof**: SMAOS operates 100% air-gapped on loopback (`127.0.0.1`) under `network_mode: "none"` with active in-memory regex scrubbing for IBANs (`[REDACTED_IBAN]`), PANs, and JWTs before disk writes.
 * **Deliverable**: An executable local test suite and CISO-defensible evidence package—not another cloud dashboard.
-* **Explore**: [ghost_audit_scanner.py](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/ghost_audit_scanner.py) · [docs/CRYPTOGRAPHY.md](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/docs/CRYPTOGRAPHY.md)
+* **Explore**: [ghost_audit_scanner.py](https://github.com/smaos-ai/aeib-receipt-fuzzer/blob/main/ghost_audit_scanner.py) · [docs/CRYPTOGRAPHY.md](https://github.com/smaos-ai/aeib-receipt-fuzzer/blob/main/docs/CRYPTOGRAPHY.md)
 
 ---
 
@@ -53,7 +53,7 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 * **Your Pain**: An agent logging a false payment confirmation during a gateway timeout is an unclassified major ICT incident. Under **EBA DORA RTS 2024/1772 Article 17**, reporting failures carry daily periodic penalties up to **1% of average daily worldwide turnover**.
 * **Reporting Timeline Mandate**: Initial notification required within 4 to 24 hours of detection; intermediate report within 72 hours; final report within 1 month.
 * **Our Verifiable Proof**: SMAOS auto-formats wire evidence into machine-readable dossiers (`dora_art17_gap_report.json`) and visual sequence diagrams (`audit_trace.mermaid`) required for DORA Article 28(3) and ISO 42001 Clause 9 Statement of Applicability (SoA) sign-offs.
-* **Explore**: [standards_mapping/EU_DORA_ART_17.md](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/standards_mapping/EU_DORA_ART_17.md) · [validate_dora_register.py](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/validate_dora_register.py)
+* **Explore**: [standards_mapping/EU_DORA_ART_17.md](https://github.com/smaos-ai/aeib-receipt-fuzzer/blob/main/standards_mapping/EU_DORA_ART_17.md) · [validate_dora_register.py](https://github.com/smaos-ai/aeib-receipt-fuzzer/blob/main/validate_dora_register.py)
 
 ---
 
@@ -64,7 +64,7 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 
 ```bash
 # Run local zero-egress fault injection — no external registry required
-git clone https://github.com/LeoBest/aeib-receipt-fuzzer
+git clone https://github.com/smaos-ai/aeib-receipt-fuzzer
 cd aeib-receipt-fuzzer
 python3 run.py --scenario 504_timeout --export-dir ./audit_out
 # Optional: build and run local container (builds from source, no Docker Hub pull)
