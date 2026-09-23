@@ -1,4 +1,4 @@
-# 🛡️ SMAOS AEIB Wire-Truth Verifier (`v0.2.0`)
+# 🛡️ SMAOS AEIB Wire-Truth Verifier (`v0.3.0`)
 > **Air-Gapped, Zero-Egress Wire-Truth Verification Engine for Autonomous Agent Harnesses** 
 > *Enforcing the IETF `dispatched_unconfirmed` invariant, DORA Article 17 compliance, and Post-Quantum Cryptographic Receipts.*
 
