@@ -83,10 +83,45 @@ Autonomous agents in financial and regulated environments suffer from the **Cont
 
 ---
 
-## 📊 Institutional Comparison: The Gold Standard
+## Why SMAOS is Unique
 
-| Feature / Capability | Naive Agent SDKs | Post-Hoc SaaS Logging | Cloud API Gateways | **SMAOS Open-Core (AEIB)** |
-| :--- | :---: | :---: | :---: | :---: |
+### 1. Wire-Truth Observation vs. Application Log Lies ("The Container Fallacy")
+* **Competitors (LangSmith, Datadog, Braintrust, AgentOps)**: Read what the agent *says* happened from application logs or API responses. When an HTTP 504 Gateway Timeout or TCP RST occurs, standard SDKs swallow the exception and falsely record `CONFIRMED`.
+* **Only SMAOS**: Observes raw network physics on `127.0.0.1` loopback. We prove the **Container Fallacy** (backed by **DEMM-Bench, arXiv:2606.20634**, showing a 75% overclaim rate in standard baselines). We intercept the fault and force the state to the IETF standard **`dispatched_unconfirmed`**.
+
+### 2. Zero-Egress, Air-Gapped Verification (0 Bytes Cloud Leak)
+* **Competitors**: Require streaming client staging traces, prompts, or sensitive payloads to third-party cloud servers, introducing massive data governance and GDPR risks.
+* **Only SMAOS**: Operates 100% locally on `127.0.0.1` under `--network none`. In-memory regex scrubbing redacts IBANs (`[REDACTED_IBAN]`), PANs, and Bearer JWTs before anything touches disk.
+
+### 3. Cryptographic Decision Reproducibility & Post-Quantum Proofs
+* **Competitors**: Offer plaintext logs, internal database records, or basic signed JWTs that fail replay-attack checks.
+* **Only SMAOS**: Binds 5 IETF AAT draft-03 digests (`model_weights`, `tokenizer`, `chat_template`, `engine_build`, `numeric_environment`) and dual-signs receipts with **Ed25519 + ML-DSA-65 (FIPS 204)**. We deliver a standalone **186 KB WASM verifier (`smaos_verify.wasm`)** so CISOs can drag and verify receipts offline in a disconnected browser with Wi-Fi turned off.
+
+### 4. Instant Code Fix, Not Just "Compliance Theater"
+* **Competitors**: Deliver generic policy PDFs or dashboards showing "your model failed."
+* **Only SMAOS**: Delivers the exact 15-line Spring Boot / WebClient fail-closed Java filter (**`ProofOrStopFilter.java`**) that engineering teams drop into production on day 1 to enforce `Evidence Absent ⟹ UNKNOWN`.
+
+---
+
+## 📊 Institutional Comparison: The Honest Calibration
+
+| Capability / Dimension | Standard SaaS Loggers & Evals | Generic DORA Auditors | **SMAOS 48-Hour Staging Diagnostic** |
+| :--- | :---: | :---: | :---: |
+| **Observation Layer** | Application SDK / API Layer | Static Policy Checklists | **Physical Wire Transport (`127.0.0.1`)** |
+| **504 Timeout Detection** | ❌ Records what SDK claims | ❌ Cannot detect runtime drops | **✅ Forces `dispatched_unconfirmed`** |
+| **Data Privacy & Egress** | ❌ High Egress (SaaS Cloud) | ⚠️ Manual Sample Intake | **✅ 0 Bytes Egress + In-Memory Scrubbing** |
+| **Attestation Binding** | ❌ Text logs / Prompts only | ❌ None | **✅ IETF AAT 5-Digest Decision Binding** |
+| **Post-Quantum Crypto** | ❌ None | ❌ None | **✅ Dual Ed25519 + ML-DSA-65 (FIPS 204)** |
+| **Offline Verification** | ❌ Requires Cloud Dashboard | ❌ Static PDF Report | **✅ Standalone WASM Verifier (`smaos_verify.wasm`)** |
+| **Remediation Delivery** | ❌ None | ❌ Generic recommendations | **✅ Drop-In Java Patch (`ProofOrStopFilter.java`)** |
+
+> *"Existing tools ask: 'What did the LLM say?'  
+> SMAOS asks: 'What actually moved on the wire, and can you prove it in court 5 years from now?'  
+>  
+> We don't sell another monitoring dashboard. We deliver a zero-egress wire-truth verifier that catches false payment confirmations, generates DORA Article 17 incident dossiers, and gives your developers the exact 15 lines of Java code to fix the bug."*
+
+
+--- | :---: | :---: | :---: | :---: |
 | **Wire-Truth Verification** | ❌ None (Swallows 504) | ❌ Text-log based | ⚠️ HTTP Status only | **✅ Physical Wire vs Log Comparison** |
 | **Data Egress & Privacy** | ❌ Sends data to Cloud | ❌ High Egress (SaaS) | ❌ Cloud-bound proxy | **✅ 0 Bytes Egress (127.0.0.1)** |
 | **PII/PCI Sanitization** | ❌ None / Client-side | ⚠️ Post-hoc masking | ⚠️ Header-only | **✅ Active In-Memory Regex Redaction** |
