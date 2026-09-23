@@ -1,34 +1,39 @@
+# docker-compose.yml — SMAOS Zero-Egress Demo (v0.3.0)
+# Runs all 4 fault scenarios locally under --network none.
+# No external registry pull required — builds from source.
+#
+# Usage:
+#   docker compose up --build          # run all 4 scenarios
+#   docker compose up --build -d       # detached
+#
+# Output:
+#   ./audit_out/<scenario_id>/disposition_report.json
+#   ./audit_out/<scenario_id>/audit_trace.mermaid
+#   ./audit_out/<scenario_id>/dora_art17_gap_report.json
+#   ./audit_out/<scenario_id>/ProofOrStopFilter.java
+
+version: "3.9"
+
 services:
   smaos-demo:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: smaos-audit
-
-    # Secure defaults: Runs entirely locally on loopback.
-    # Use network_mode: "none" for strict CLI-only offline mode.
-    ports:
-      - "127.0.0.1:8765:8765"
-
+    image: smaos-demo:0.3.0
+    container_name: smaos-demo
+    network_mode: "none"
     volumes:
       - ./audit_out:/app/audit_out:rw
       - ./fixtures:/app/fixtures:ro
-
     environment:
       PYTHONUNBUFFERED: "1"
-      PYTHONDONTWRITEBYTECODE: "1"
-
-      # --- THE CONTAINER SHOP MENU ---
-      # Prospects can toggle these to test their specific stack
-      RUNTIME: "java21"             # java21 | python
-      FRAMEWORK: "spring-boot"      # spring-boot | langchain4j | fastapi
-      FAULT_MODES: "504,TCP_RST"    # 504 | TCP_RST
-      PRIVACY_GUARD: "true"         # IBAN/PAN/JWT memory scrubbing
-      COMPLIANCE_EXPORT: "DORA,ISO42001,ATH"
-
-      # Demo Launcher Configuration
-      DEMO_MODE: "live"             # live | offline
-
-    # Runs as non-root smaos user (UID 1000), matching the Dockerfile.
-    # To use your host UID: UID=$(id -u) GID=$(id -g) docker compose up
-    user: "1000:1000"
+    command: >
+      sh -c "
+        set -e &&
+        for s in 504_timeout tcp_reset confirmed refused; do
+          echo \"[+] Running scenario: $$s\" &&
+          python3 run.py --scenario $$s --export-dir /app/audit_out/$$s;
+        done &&
+        echo '' &&
+        echo '[✔] All scenarios complete. Artifacts in ./audit_out/'
+      "
