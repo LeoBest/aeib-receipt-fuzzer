@@ -40,7 +40,7 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 * **The Ground Truth**: Standard observability tools (LangSmith, Datadog LLM Observability, Braintrust) record what the agent harness reports. They answer "what did the SDK log?"—not "was uncertainty preserved on wire fault?"
 * **Our Verifiable Proof**: SMAOS operates 100% air-gapped on loopback (`127.0.0.1`) under `network_mode: "none"` with active in-memory regex scrubbing for IBANs (`[REDACTED_IBAN]`), PANs, and JWTs before disk writes.
 * **Deliverable**: An executable local test suite and CISO-defensible evidence package—not another cloud dashboard.
-* **Explore**: [ghost_audit_scanner.py](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/ghost_audit_scanner.py) · [SECURITY.md](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/SECURITY.md)
+* **Explore**: [ghost_audit_scanner.py](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/ghost_audit_scanner.py) · [docs/CRYPTOGRAPHY.md](https://github.com/LeoBest/aeib-receipt-fuzzer/blob/main/docs/CRYPTOGRAPHY.md)
 
 ---
 
@@ -58,8 +58,13 @@ We built **SMAOS** to bridge the gap between engineering reality and regulatory 
 * **Our Verifiable Proof**: Test our logic on local metal with zero trust:
 
 ```bash
-# Run local zero-egress fault injection container
-docker run --rm -p 127.0.0.1:8765:8765 --network none sovereignnexus/smaos-demo:0.3.0
+# Run local zero-egress fault injection — no external registry required
+git clone https://github.com/LeoBest/aeib-receipt-fuzzer
+cd aeib-receipt-fuzzer
+python3 run.py --scenario 504_timeout --export-dir ./audit_out
+# Optional: build and run local container (builds from source, no Docker Hub pull)
+docker build -t smaos-demo:0.3.0 .
+docker run --rm -p 127.0.0.1:8765:8765 --network none smaos-demo:0.3.0
 ```
 
 #### Scenario Disposition Matrix
@@ -104,6 +109,18 @@ docker run --rm -p 127.0.0.1:8765:8765 --network none sovereignnexus/smaos-demo:
 │ • 15 IETF Conformance Test Vectors               │      │ • Enterprise Governance Platform (SMAOS)         │
 └──────────────────────────────────────────────────┘      └──────────────────────────────────────────────────┘
 ```
+
+---
+
+---
+
+## 🚀 Roadmap: v0.4.0 (In Progress)
+
+The following capabilities are under active development and are **not yet shipped**:
+
+* **Offline WASM Verifier (`smaos_verify.wasm`)**: Standalone pure Rust WebAssembly binary for offline Ed25519 signature verification in air-gapped browsers.
+* **IETF AAT Draft-04 Digests**: Binding 5 decision-reproducibility digests (`model_weights`, `tokenizer`, `chat_template`, `engine_build`, `numeric_environment`) into every receipt.
+* **Post-Quantum Cryptography**: ML-DSA-65 (FIPS 204) dual-signing capability.
 
 ---
 
