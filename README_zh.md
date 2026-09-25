@@ -75,9 +75,8 @@ def settle_transaction(payload: dict) -> dict:
 
 ---
 
-## 💼 定额 Staging 阶段验证评估服务
+## 🏛️ 企业支持与技术咨询
 
-* **第一阶段：48小时诊断性评估（€1,500 / 约 11,500 RMB）：** 气隙导入 250+ 条测试环境轨迹，计算毒性凭据指数（TRI %），定位虚假确认风险。
-* **第二阶段：5天深度对账司法审计（€2,500 / 约 19,000 RMB）：** 针对测试环境实施 6 种线缆级故障注入，交付 DORA 第17条差距评估报告及定制 Java/Python 修复过滤器。
-
-📩 **商务咨询与预约评估：** `andrii@sovereignnexus.org` / `andrejlo123@gmail.com`
+* **开源测试**：支持在完全气隙隔离环境（`--network none`）下本地运行，零外部网络外溢。
+* **企业治理与试点合作**：针对 EU AI Act 及 DORA 第17条合规技术、线缆级故障验证及原型集成：
+  * **联系方式**：`andrejlo123@gmail.com` | **SovereignNexus s.r.o.**
