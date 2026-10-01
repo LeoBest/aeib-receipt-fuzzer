@@ -941,12 +941,27 @@ def generate_trust_passport(out_dir=None):
     with open(target_path, "w") as f:
         json.dump(passport, f, indent=2)
 
+    # NEW: Cryptographic Signing Integration
+    import sys
+    sys.path.insert(0, ".") # Ensure src is resolvable from repo root
     try:
-        from src.scitt_envelope import generate_scitt_envelope
-        generate_scitt_envelope(str(target_path), str(out_dir / "trust_passport.cose.json"))
-        generate_scitt_envelope(str(target_path), str(out_dir / "trust_passport.cose"))
-    except Exception:
-        pass
+        from src.cose_signer import generate_keypair, sign_trust_passport
+        
+        # 1. Get or create the signing key
+        signing_key = generate_keypair(Path("audit_out/smaos_signing_key.pem"))
+        
+        # 2. Sign the passport
+        signed_passport = sign_trust_passport(passport, signing_key)
+        
+        # 3. Save the verifiable artifact
+        cose_output_path = out_dir / "trust_passport.cose.json"
+        with open(cose_output_path, 'w', encoding='utf-8') as f:
+            json.dump(signed_passport, f, indent=2)
+            
+        print(f"[✔] SCITT-Ready Trust Passport signed and saved: {cose_output_path}")
+        print(f"[✔] Payload Hash: {signed_passport['payload_hash']}")
+    except ImportError as e:
+        print(f"Warning: Could not import cose_signer: {e}")
 
     try:
         from src.bbs_redactor import redact_passport
