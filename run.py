@@ -937,9 +937,7 @@ def generate_trust_passport(out_dir=None):
             }
         ]
     }
-    target_path = out_dir / "trust_passport.json"
-    with open(target_path, "w") as f:
-        json.dump(passport, f, indent=2)
+    # Replaced legacy unsigned trust_passport.json with signed SCITT envelope
 
     # NEW: Cryptographic Signing Integration
     import sys
