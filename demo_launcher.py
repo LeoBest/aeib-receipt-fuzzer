@@ -22,6 +22,8 @@ import html as _html
 import json
 from pathlib import Path
 import sys
+import argparse
+import json
 
 # Import shared constants from run.py — single source of truth for scrubber,
 # Java filter, and Mermaid generation.
@@ -41,6 +43,12 @@ def _build_mermaid(payload_summary: str, amount: float, scrubbed_iban: str) -> s
 
 
 def main():
+    parser = argparse.ArgumentParser(description="SMAOS AEIB Local Wire-Truth Demo Harness")
+    parser.add_argument("--scenario", default="504_timeout", help="Scenario to run")
+    parser.add_argument("--export-dir", default="./audit_out", help="Directory to export artifacts")
+    parser.add_argument("--redact-pii", action="store_true", help="Redact PII from output using BBS+")
+    args = parser.parse_args()
+    
     print("🚀 Launching SMAOS AEIB Local Wire-Truth Demo Harness...")
     print("🚀 [SMAOS Local Wire-Truth Observer v0.2.0] Starting zero-egress inspection...")
     print("🔒 [Privacy Guard] Performing in-memory PII/PCI-DSS scrubbing...")
@@ -314,6 +322,61 @@ def main():
 </html>
 """
     (audit_dir / "index.html").write_text(html_dashboard)
+
+    if args.redact_pii:
+        print("🔐 [Moat 2] Generating BBS+ Redaction Proof for compliance...")
+        try:
+            sys.path.insert(0, str(_HERE.parent)) # ensure src is resolvable
+            from src.bbs_signer import BBSPlusEngine, SovereignAuditLogEntry
+            
+            # Use the record data as the log
+            log_data = {
+                "event_id": "EVT-2026-9901",
+                "timestamp_iso": "2026-10-01T12:00:00Z",
+                "agent_id": "SMAOS-LOAN-OFFICER-01",
+                "tool_name": "credit_facility_underwrite",
+                "user_full_name": "Jane Doe",
+                "user_iban": scrubbed_iban,
+                "user_tax_id": "TAX-EXAMPLE-001",
+                "credit_limit_eur": str(amount),
+                "policy_verdict": "dispatched_unconfirmed",
+                "boundary_hash": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890"
+            }
+            
+            field_names = SovereignAuditLogEntry.get_field_names()
+            priv_key, pub_key = BBSPlusEngine.generate_keypair(message_count=len(field_names), key_id="bank-bbs-01")
+            
+            entry = SovereignAuditLogEntry(log_data)
+            messages = entry.to_message_vector()
+            
+            sig = BBSPlusEngine.sign_messages(priv_key, messages)
+            
+            disclosed_indices = SovereignAuditLogEntry.get_non_pii_indices()
+            proof = BBSPlusEngine.create_selective_proof(
+                pub_key=pub_key,
+                signature=sig,
+                messages=messages,
+                field_names=field_names,
+                disclosed_indices=disclosed_indices,
+                
+            )
+            
+            # Validate
+            is_valid, msg, payload = BBSPlusEngine.verify_selective_proof(
+                pub_key=pub_key,
+                proof=proof,
+                field_names=field_names
+            )
+            
+            if is_valid:
+                proof_path = audit_dir / "bbs_redacted_proof.json"
+                with open(proof_path, "w") as f:
+                    json.dump(proof.to_dict(), f, indent=2)
+                print(f"  [✔] VERIFIED_REDACTED: PII fields blinded. Cryptographic proof saved to {proof_path}")
+            else:
+                print("  [✘] Failed to generate valid BBS+ proof.")
+        except Exception as e:
+            print(f"  [✘] Error generating BBS+ proof: {e}")
 
     print("✅ Audit execution completed. Artifacts written to ./audit_out:")
     print("  • audit_out/audit_trace.mermaid")
