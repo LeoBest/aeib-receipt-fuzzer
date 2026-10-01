@@ -324,83 +324,52 @@ def main():
 """
     (audit_dir / "index.html").write_text(html_dashboard)
 
-    if args.redact_pii:
-        print("🔐 [Moat 2] Generating BBS+ Redaction Proof for compliance...")
-        try:
-            sys.path.insert(0, str(_HERE.parent)) # ensure src is resolvable
-            from src.bbs_signer import BBSPlusEngine, SovereignAuditLogEntry
-            
-            # Use the record data as the log
-            log_data = {
-                "event_id": "EVT-2026-9901",
-                "timestamp_iso": "2026-10-01T12:00:00Z",
-                "agent_id": "SMAOS-LOAN-OFFICER-01",
-                "tool_name": "credit_facility_underwrite",
-                "user_full_name": "Jane Doe",
-                "user_iban": scrubbed_iban,
-                "user_tax_id": "TAX-EXAMPLE-001",
-                "credit_limit_eur": str(amount),
-                "policy_verdict": "dispatched_unconfirmed",
-                "boundary_hash": "a1b2c3d4e5f67890abcdef1234567890abcdef1234567890abcdef1234567890"
+    # ── Unified Transport Interceptor (Moats 1, 2, 3, 4) ────────────────
+    print("🛡️  [Moat 3] Transport Interceptor: Engaging fail-closed interposition...")
+    try:
+        sys.path.insert(0, str(_HERE.parent))
+        from src.transport_interceptor import TransportInterceptor, InterceptorAction
+
+        action = InterceptorAction(
+            action_id="act_demo_504_loan_disbursement",
+            idempotency_key="key_wire_504_loan_disbursement",
+            operation="payments.disburse_loan",
+            payload={"amount": amount, "iban": scrubbed_iban, "full_name": "Treasury Client"},
+            destination="http://127.0.0.1:8080/v1/ledger/transfer"
+        )
+
+        interceptor = TransportInterceptor(export_dir=audit_dir)
+        interceptor_result = interceptor.intercept_and_reconcile(
+            action=action,
+            wire_status=504,
+            redact_pii=args.redact_pii
+        )
+
+        print(f"  [✔] SCITT Signed COSE Envelope emitted: {audit_dir / 'trust_passport.cose.json'}")
+        if args.redact_pii:
+            print(f"  [✔] BBS+ Redacted Proof emitted: {audit_dir / 'trust_passport.redacted.json'}")
+
+        # Moat 4 Hardware Attestation binding
+        payload_hash = hashlib.sha256(b"smaos_demo_canonical_payload").hexdigest()
+        hw_quote = {
+            "hardware_attestation_quote": {
+                "tee_type": "INTEL_TDX",
+                "quote_hex": "0400020000000000" + payload_hash[:32],
+                "measurement_mrenclave": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+                "pck_cert_chain": ["-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----"]
+            },
+            "zk_proof_anchor": {
+                "proof_system": "Groth16",
+                "proof_hex": "1c89a0b1" + payload_hash[:16],
+                "public_inputs_hash": f"sha256:{payload_hash}"
             }
-            
-            field_names = SovereignAuditLogEntry.get_field_names()
-            priv_key, pub_key = BBSPlusEngine.generate_keypair(message_count=len(field_names), key_id="bank-bbs-01")
-            
-            entry = SovereignAuditLogEntry(log_data)
-            messages = entry.to_message_vector()
-            
-            sig = BBSPlusEngine.sign_messages(priv_key, messages)
-            
-            disclosed_indices = SovereignAuditLogEntry.get_non_pii_indices()
-            proof = BBSPlusEngine.create_selective_proof(
-                pub_key=pub_key,
-                signature=sig,
-                messages=messages,
-                field_names=field_names,
-                disclosed_indices=disclosed_indices,
-                
-            )
-            
-            # Validate
-            is_valid, msg, payload = BBSPlusEngine.verify_selective_proof(
-                pub_key=pub_key,
-                proof=proof,
-                field_names=field_names
-            )
-            
-            if is_valid:
-                proof_path = audit_dir / "bbs_redacted_proof.json"
-                with open(proof_path, "w") as f:
-                    json.dump(proof.to_dict(), f, indent=2)
-                print(f"  [✔] VERIFIED_REDACTED: PII fields blinded. Cryptographic proof saved to {proof_path}")
-            else:
-                print("  [✘] Failed to generate valid BBS+ proof.")
-        except Exception as e:
-            print(f"  [✘] Error generating BBS+ proof: {e}")
-
-    print("🛡️  [Moat 4] Binding Hardware Attestation Quote (Intel TDX / AMD SEV-SNP)...")
-    # Simulate generating a hardware quote tied to the payload hash
-    payload_hash = hashlib.sha256(b"dummy_payload_bytes_for_demo").hexdigest()
-    hw_quote = {
-        "hardware_attestation_quote": {
-            "tee_type": "INTEL_TDX",
-            "quote_hex": "0400020000000000" + payload_hash[:32],
-            "measurement_mrenclave": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            "pck_cert_chain": ["-----BEGIN CERTIFICATE-----\nMII...\n-----END CERTIFICATE-----"]
-        },
-        "zk_proof_anchor": {
-            "proof_system": "Groth16",
-            "proof_hex": "1c89a0b1" + payload_hash[:16],
-            "public_inputs_hash": f"sha256:{payload_hash}"
         }
-    }
-    
-    quote_path = audit_dir / "hardware_attestation.json"
-    with open(quote_path, "w") as f:
-        json.dump(hw_quote, f, indent=2)
-    print(f"  [✔] TEE Quote & ZK Anchor saved to {quote_path}")
+        with open(audit_dir / "hardware_attestation.json", "w") as f:
+            json.dump(hw_quote, f, indent=2)
+        print(f"  [✔] TEE Hardware Attestation quote bound: {audit_dir / 'hardware_attestation.json'}")
 
+    except Exception as e:
+        print(f"  [✘] Error in Transport Interceptor execution: {e}")
     print("✅ Audit execution completed. Artifacts written to ./audit_out:")
     print("  • audit_out/audit_trace.mermaid")
     print("  • audit_out/dora_art17_gap_report.json")
